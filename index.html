@@ -216,6 +216,8 @@ input:focus { border-color: var(--gold); }
   .app-header { padding: 0.65rem 1rem; }
 }
 </style>
+<!-- SheetJS per lettura file Excel/CSV -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -285,6 +287,33 @@ input:focus { border-color: var(--gold); }
   <!-- ADMIN -->
   <div id="page-admin" class="page hidden">
     <div class="admin-wrap">
+
+      <div class="admin-card">
+        <div class="admin-card-title">⬆ Importa Utenti da File</div>
+        <div style="font-family:sans-serif;font-size:0.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.6;">
+          Carica un file <strong style="color:var(--cream)">.xlsx</strong> o <strong style="color:var(--cream)">.csv</strong> con le colonne:
+          <code style="background:var(--bg);padding:0.15rem 0.4rem;border-radius:4px;color:var(--gold);">username</code>
+          <code style="background:var(--bg);padding:0.15rem 0.4rem;border-radius:4px;color:var(--gold);">password</code>
+          <code style="background:var(--bg);padding:0.15rem 0.4rem;border-radius:4px;color:var(--gold);">crediti</code>
+          (la prima riga deve essere l'intestazione).
+        </div>
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <label for="import-file" class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0;">
+            📂 Scegli file
+          </label>
+          <input type="file" id="import-file" accept=".xlsx,.xls,.csv" style="display:none;">
+          <span id="import-filename" style="font-family:sans-serif;font-size:0.85rem;color:var(--muted);">Nessun file selezionato</span>
+          <input type="number" id="import-creds" value="5" min="0" style="width:70px;text-align:center;" title="Crediti default (usato se colonna crediti mancante)">
+          <span style="font-family:sans-serif;font-size:0.82rem;color:var(--muted);">crediti default</span>
+        </div>
+        <div id="import-preview" class="hidden" style="margin-top:1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;font-family:sans-serif;font-size:0.83rem;max-height:180px;overflow-y:auto;"></div>
+        <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap;">
+          <button class="btn btn-gold btn-sm hidden" id="btn-import-confirm">✓ Importa tutti</button>
+          <button class="btn btn-ghost btn-sm hidden" id="btn-import-cancel">Annulla</button>
+        </div>
+        <div id="import-msg" class="hidden" style="margin-top:0.9rem;"></div>
+      </div>
+
       <div class="admin-card">
         <div class="admin-card-title">Aggiungi Utente</div>
         <div class="row3">
@@ -920,6 +949,146 @@ setInterval(async () => {
   const boardVisible = !document.getElementById('page-board').classList.contains('hidden');
   if (U && boardVisible) { await loadAll(); renderBoard(); }
 }, 20000);
+
+// ═══ IMPORT UTENTI DA FILE ═══
+let importData = []; // righe parsed pronte all'importazione
+
+document.getElementById('import-file').onchange = function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('import-filename').textContent = file.name;
+  importData = [];
+  document.getElementById('import-preview').classList.add('hidden');
+  document.getElementById('btn-import-confirm').classList.add('hidden');
+  document.getElementById('btn-import-cancel').classList.add('hidden');
+
+  const reader = new FileReader();
+  const isCSV = file.name.toLowerCase().endsWith('.csv');
+
+  reader.onload = function(ev) {
+    try {
+      let rows = [];
+      if (isCSV) {
+        // Parsing CSV manuale
+        const text = ev.target.result;
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        const headers = lines[0].split(/[,;]/).map(h => h.trim().toLowerCase());
+        const iUser = headers.indexOf('username');
+        const iPass = headers.indexOf('password');
+        const iCreds = headers.indexOf('crediti');
+        if (iUser === -1 || iPass === -1) throw new Error('Colonne "username" e "password" non trovate');
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(/[,;]/);
+          const u = (cols[iUser] || '').trim();
+          const p = (cols[iPass] || '').trim();
+          const c = iCreds !== -1 ? parseInt(cols[iCreds]) || 0 : null;
+          if (u && p) rows.push({ u, p, c });
+        }
+      } else {
+        // Parsing XLSX con SheetJS
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        // Normalizza intestazioni (case-insensitive)
+        json.forEach(row => {
+          const keys = Object.keys(row);
+          const kUser = keys.find(k => k.toLowerCase() === 'username');
+          const kPass = keys.find(k => k.toLowerCase() === 'password');
+          const kCred = keys.find(k => k.toLowerCase() === 'crediti');
+          if (!kUser || !kPass) return;
+          const u = String(row[kUser] || '').trim();
+          const p = String(row[kPass] || '').trim();
+          const c = kCred ? (parseInt(row[kCred]) || 0) : null;
+          if (u && p) rows.push({ u, p, c });
+        });
+      }
+
+      if (!rows.length) throw new Error('Nessuna riga valida trovata nel file');
+
+      const defCreds = parseInt(document.getElementById('import-creds').value) || 0;
+      importData = rows.map(r => ({ u: r.u, p: r.p, c: r.c !== null ? r.c : defCreds }));
+
+      // Anteprima
+      const prev = document.getElementById('import-preview');
+      let html = '<table style="width:100%;border-collapse:collapse;">';
+      html += '<tr style="color:var(--muted);border-bottom:1px solid var(--border);">'
+            + '<th style="text-align:left;padding:0.3rem 0.5rem;">#</th>'
+            + '<th style="text-align:left;padding:0.3rem 0.5rem;">Username</th>'
+            + '<th style="text-align:left;padding:0.3rem 0.5rem;">Password</th>'
+            + '<th style="text-align:left;padding:0.3rem 0.5rem;">Crediti</th></tr>';
+      importData.forEach((r, i) => {
+        html += `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:0.25rem 0.5rem;color:var(--muted);">${i+1}</td>
+          <td style="padding:0.25rem 0.5rem;font-weight:600;">${r.u}</td>
+          <td style="padding:0.25rem 0.5rem;color:var(--muted);">${r.p}</td>
+          <td style="padding:0.25rem 0.5rem;color:var(--gold);">${r.c}</td>
+        </tr>`;
+      });
+      html += '</table>';
+      prev.innerHTML = html;
+      prev.classList.remove('hidden');
+      document.getElementById('btn-import-confirm').classList.remove('hidden');
+      document.getElementById('btn-import-cancel').classList.remove('hidden');
+      showImportMsg(`${importData.length} utenti trovati. Verifica l'anteprima e clicca "Importa tutti".`, 'ok');
+    } catch(err) {
+      showImportMsg('Errore lettura file: ' + err.message, 'err');
+    }
+  };
+
+  if (isCSV) reader.readAsText(file, 'UTF-8');
+  else reader.readAsArrayBuffer(file);
+};
+
+function showImportMsg(txt, type) {
+  const el = document.getElementById('import-msg');
+  el.className = type;
+  el.textContent = txt;
+  el.classList.remove('hidden');
+}
+
+document.getElementById('btn-import-cancel').onclick = () => {
+  importData = [];
+  document.getElementById('import-file').value = '';
+  document.getElementById('import-filename').textContent = 'Nessun file selezionato';
+  document.getElementById('import-preview').classList.add('hidden');
+  document.getElementById('btn-import-confirm').classList.add('hidden');
+  document.getElementById('btn-import-cancel').classList.add('hidden');
+  document.getElementById('import-msg').classList.add('hidden');
+};
+
+document.getElementById('btn-import-confirm').onclick = async () => {
+  if (!importData.length) return;
+  const btn = document.getElementById('btn-import-confirm');
+  btn.disabled = true;
+  btn.textContent = 'Importazione in corso…';
+  await loadAll();
+
+  let aggiunti = 0, saltati = [];
+  importData.forEach(r => {
+    if (USERS[r.u]) { saltati.push(r.u); return; }
+    USERS[r.u] = { pw: r.p, admin: false, credits: r.c, nums: [] };
+    aggiunti++;
+  });
+
+  await saveUsers();
+  const logMsg = `Admin ha importato <b>${aggiunti}</b> utenti da file`
+    + (saltati.length ? ` (saltati ${saltati.length} già esistenti: ${saltati.join(', ')})` : '');
+  await addLog(logMsg);
+
+  let msg = `✓ ${aggiunti} utenti importati con successo.`;
+  if (saltati.length) msg += ` ${saltati.length} saltati (username già esistenti).`;
+  showImportMsg(msg, 'ok');
+
+  btn.disabled = false;
+  btn.textContent = '✓ Importa tutti';
+  importData = [];
+  document.getElementById('import-file').value = '';
+  document.getElementById('import-filename').textContent = 'Nessun file selezionato';
+  document.getElementById('import-preview').classList.add('hidden');
+  document.getElementById('btn-import-confirm').classList.add('hidden');
+  document.getElementById('btn-import-cancel').classList.add('hidden');
+  renderAdmin();
+};
 
 // ═══ INIT ═══
 (async () => {
