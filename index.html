@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estrazione Lotteria</title>
+<!-- Firebase Auth SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <style>
 :root {
   --bg: #0a1a0e;
@@ -398,8 +401,7 @@ input:focus { border-color: var(--gold); }
 
 <script>
 // ═══ CONFIG ═══
-const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'Enzo_provatest';
+// ADMIN_USER e ADMIN_PASS rimossi dal codice — ora gestiti da Firebase Authentication
 
 // ─────────────────────────────────────────────
 // ★  INSERISCI QUI I TUOI DATI FIREBASE  ★
@@ -408,7 +410,23 @@ const ADMIN_PASS = 'Enzo_provatest';
 // ─────────────────────────────────────────────
 const FIREBASE_URL = 'https://estrazione-lotteria-default-rtdb.europe-west1.firebasedatabase.app';
 const FIREBASE_KEY = 'AIzaSyBicq5QXJ3YzhlqQohWLZNbXU0V0k3SxaI';
+
+// ★ Questi valori li trovi in Firebase Console → Project Settings → Your apps → Config
+const FIREBASE_CONFIG = {
+  apiKey:      'AIzaSyBicq5QXJ3YzhlqQohWLZNbXU0V0k3SxaI',
+  authDomain:  'estrazione-lotteria.firebaseapp.com',   // ← sostituisci col tuo projectId
+  databaseURL: 'https://estrazione-lotteria-default-rtdb.europe-west1.firebasedatabase.app',
+  projectId:   'estrazione-lotteria',                   // ← sostituisci col tuo projectId
+};
+
+// ★ Email che hai creato in Firebase Console → Authentication → Users
+// Non è una password — è solo un identificatore. Può stare nel codice.
+const ADMIN_AUTH_EMAIL = 'admin@estrazione-lotteria.it';
 // ─────────────────────────────────────────────
+
+// Inizializzazione Firebase Auth SDK
+firebase.initializeApp(FIREBASE_CONFIG);
+const fbAuth = firebase.auth();
 
 // ═══ STORAGE ABSTRACTION (Firebase Realtime DB via REST) ═══
 const store = (() => {
@@ -448,9 +466,15 @@ async function loadAll() {
   } catch {
     USERS = {};
   }
-  // Always guarantee admin account is present and correct
-  USERS[ADMIN_USER] = { pw: ADMIN_PASS, admin: true, credits: 999, nums: USERS[ADMIN_USER]?.nums || [] };
-  await store.set(SK.users, USERS);
+  // Garantisce che l'account admin esista nel DB (senza password hardcoded:
+  // l'autenticazione avviene tramite Firebase Auth)
+  if (!USERS['admin']) {
+    USERS['admin'] = { admin: true, credits: 999, nums: [] };
+    await store.set(SK.users, USERS);
+  } else {
+    if (USERS['admin'].pw) { delete USERS['admin'].pw; } // rimuove pw legacy
+    USERS['admin'].admin = true;
+  }
   try {
     NUMS = await store.get(SK.nums);
   } catch {
@@ -484,6 +508,20 @@ async function addLog(msg) {
 // ═══ AUTH ═══
 async function doLogin(user, pw) {
   await loadAll();
+
+  // ── ADMIN: autenticazione tramite Firebase Authentication (password NON nel codice) ──
+  if (user.trim().toLowerCase() === 'admin') {
+    try {
+      await fbAuth.signInWithEmailAndPassword(ADMIN_AUTH_EMAIL, pw);
+      // Login Firebase Auth riuscito → è l'admin
+      U = { user: 'admin', admin: true, credits: USERS['admin']?.credits ?? 999, nums: USERS['admin']?.nums || [] };
+      return;
+    } catch(e) {
+      throw new Error('Password admin errata');
+    }
+  }
+
+  // ── UTENTI NORMALI: autenticazione tramite Firebase Realtime DB ──
   const u = USERS[user];
   if (!u) throw new Error('Utente non trovato');
   if (u.pw !== pw) throw new Error('Password errata');
@@ -493,6 +531,7 @@ async function doLogin(user, pw) {
 
 function doLogout() {
   U = null;
+  fbAuth.signOut().catch(() => {}); // disconnette anche da Firebase Auth
   show('login');
 }
 
@@ -885,14 +924,13 @@ setInterval(async () => {
 // ═══ INIT ═══
 (async () => {
   try {
-    if (FIREBASE_URL.includes('NOME-PROGETTO') || FIREBASE_KEY.includes('INSERISCI')) {
+    if (FIREBASE_URL.includes('NOME-PROGETTO') || FIREBASE_KEY.includes('INSERISCI') || ADMIN_AUTH_EMAIL.includes('tuodominio')) {
       document.getElementById('scr-loading').innerHTML =
         '<div style="text-align:center;padding:2rem;max-width:480px;">' +
         '<div style="font-size:2rem;margin-bottom:1rem;">⚠️</div>' +
         '<div style="color:#c9921a;font-size:1.1rem;margin-bottom:0.75rem;">Configurazione Firebase mancante</div>' +
-        '<div style="color:#6b9470;font-size:0.88rem;line-height:1.7;">Apri il file HTML in un editor di testo e sostituisci<br>' +
-        '<code style="color:#f0e4c2;">NOME-PROGETTO</code> e <code style="color:#f0e4c2;">INSERISCI_QUI_LA_TUA_API_KEY</code><br>' +
-        'con i valori reali del tuo progetto Firebase.</div>' +
+        '<div style="color:#6b9470;font-size:0.88rem;line-height:1.7;">Aggiorna le costanti <code style="color:#f0e4c2;">FIREBASE_CONFIG</code>, ' +
+        '<code style="color:#f0e4c2;">ADMIN_AUTH_EMAIL</code> e <code style="color:#f0e4c2;">FIREBASE_URL</code> con i tuoi valori reali.</div>' +
         '</div>';
       return;
     }
@@ -908,7 +946,6 @@ setInterval(async () => {
     document.getElementById('offline-banner').classList.remove('hidden');
   }
 })();
-  
 </script>
 </body>
 </html>
