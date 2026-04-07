@@ -203,6 +203,24 @@ input:focus { border-color: var(--gold); }
 .log-entry { padding: 0.35rem 0.6rem; border-radius: 5px; background: var(--surface2); border-left: 3px solid var(--border2); line-height: 1.5; }
 .log-ts { color: var(--muted); margin-right: 0.75rem; font-size: 0.8rem; }
 
+/* ─── DEADLINE ─── */
+.deadline-banner {
+  border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 1rem;
+  font-family: sans-serif; font-size: 0.88rem; display: flex;
+  align-items: center; gap: 0.6rem; flex-wrap: wrap;
+}
+.deadline-banner.open  { background: #0c2d1c; border: 1px solid var(--mine-border); color: var(--mine-text); }
+.deadline-banner.warn  { background: #2e2200; border: 1px solid #8a6000; color: #f0c040; }
+.deadline-banner.closed { background: var(--taken-bg); border: 1px solid var(--taken-border); color: var(--taken-text); }
+.nc-closed { background: #111 !important; border-color: #333 !important; color: #444 !important; cursor: not-allowed !important; }
+input[type=datetime-local] {
+  background: var(--bg); border: 1px solid var(--border2); border-radius: 7px;
+  padding: 0.55rem 0.8rem; color: var(--cream); font-size: 0.9rem;
+  font-family: sans-serif; outline: none; transition: border-color 0.2s;
+  color-scheme: dark;
+}
+input[type=datetime-local]:focus { border-color: var(--gold); }
+
 /* ─── OFFLINE WARNING ─── */
 .offline-banner {
   background: #2a2010; border-bottom: 1px solid #5a4a20;
@@ -216,8 +234,6 @@ input:focus { border-color: var(--gold); }
   .app-header { padding: 0.65rem 1rem; }
 }
 </style>
-<!-- SheetJS per lettura file Excel/CSV -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -266,6 +282,7 @@ input:focus { border-color: var(--gold); }
         <span class="board-heading">Tabellone dei Numeri</span>
         <button class="btn btn-ghost btn-sm" id="btn-refresh">↻ Aggiorna</button>
       </div>
+      <div id="deadline-banner" class="deadline-banner hidden"></div>
       <div class="grid-90" id="board-grid"></div>
       <div class="legend">
         <div class="legend-item"><div class="ldot ldot-av"></div>Disponibile</div>
@@ -287,33 +304,6 @@ input:focus { border-color: var(--gold); }
   <!-- ADMIN -->
   <div id="page-admin" class="page hidden">
     <div class="admin-wrap">
-
-      <div class="admin-card">
-        <div class="admin-card-title">⬆ Importa Utenti da File</div>
-        <div style="font-family:sans-serif;font-size:0.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.6;">
-          Carica un file <strong style="color:var(--cream)">.xlsx</strong> o <strong style="color:var(--cream)">.csv</strong> con le colonne:
-          <code style="background:var(--bg);padding:0.15rem 0.4rem;border-radius:4px;color:var(--gold);">username</code>
-          <code style="background:var(--bg);padding:0.15rem 0.4rem;border-radius:4px;color:var(--gold);">password</code>
-          <code style="background:var(--bg);padding:0.15rem 0.4rem;border-radius:4px;color:var(--gold);">crediti</code>
-          (la prima riga deve essere l'intestazione).
-        </div>
-        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-          <label for="import-file" class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0;">
-            📂 Scegli file
-          </label>
-          <input type="file" id="import-file" accept=".xlsx,.xls,.csv" style="display:none;">
-          <span id="import-filename" style="font-family:sans-serif;font-size:0.85rem;color:var(--muted);">Nessun file selezionato</span>
-          <input type="number" id="import-creds" value="5" min="0" style="width:70px;text-align:center;" title="Crediti default (usato se colonna crediti mancante)">
-          <span style="font-family:sans-serif;font-size:0.82rem;color:var(--muted);">crediti default</span>
-        </div>
-        <div id="import-preview" class="hidden" style="margin-top:1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;font-family:sans-serif;font-size:0.83rem;max-height:180px;overflow-y:auto;"></div>
-        <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap;">
-          <button class="btn btn-gold btn-sm hidden" id="btn-import-confirm">✓ Importa tutti</button>
-          <button class="btn btn-ghost btn-sm hidden" id="btn-import-cancel">Annulla</button>
-        </div>
-        <div id="import-msg" class="hidden" style="margin-top:0.9rem;"></div>
-      </div>
-
       <div class="admin-card">
         <div class="admin-card-title">Aggiungi Utente</div>
         <div class="row3">
@@ -358,6 +348,19 @@ input:focus { border-color: var(--gold); }
           <div class="num-chips" id="detail-chips"></div>
           <div class="empty-note hidden" id="detail-empty">Nessun numero acquistato.</div>
         </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-title">Scadenza Acquisti</div>
+        <div style="font-family:sans-serif;font-size:0.85rem;color:var(--muted);margin-bottom:1rem;">
+          Imposta la data e ora limite entro cui gli utenti possono acquistare numeri. Dopo la scadenza il tabellone è bloccato in sola lettura.
+        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+          <input type="datetime-local" id="dl-input" style="flex:1;min-width:200px;">
+          <button class="btn btn-gold btn-sm" id="btn-dl-save">Salva scadenza</button>
+          <button class="btn btn-ghost btn-sm" id="btn-dl-clear">Rimuovi</button>
+        </div>
+        <div id="dl-status" style="margin-top:0.85rem;font-family:sans-serif;font-size:0.88rem;"></div>
       </div>
 
       <div class="admin-card">
@@ -485,8 +488,9 @@ let U = null;           // current user object
 let USERS = {};         // all users
 let NUMS = {};          // {1..90: username|null}
 let LOG = [];           // activity log entries
+let DEADLINE = null;    // ISO string oppure null = nessuna scadenza
 let pendingN = null;
-const SK = { users: 'users', nums: 'nums', log: 'log' };
+const SK = { users: 'users', nums: 'nums', log: 'log', deadline: 'deadline' };
 
 // ═══ DATA ═══
 async function loadAll() {
@@ -516,11 +520,40 @@ async function loadAll() {
   } catch {
     LOG = [];
   }
+  try {
+    DEADLINE = await store.get(SK.deadline);
+  } catch {
+    DEADLINE = null;
+  }
 }
 
 async function saveUsers() { await store.set(SK.users, USERS); }
 async function saveNums()  { await store.set(SK.nums, NUMS); }
 async function saveLog()   { await store.set(SK.log, LOG); }
+async function saveDeadline() {
+  if (DEADLINE) await store.set(SK.deadline, DEADLINE);
+  else {
+    try { await store.set(SK.deadline, null); } catch {}
+  }
+}
+
+function isExpired() {
+  if (!DEADLINE) return false;
+  return new Date() > new Date(DEADLINE);
+}
+
+function fmtDeadline(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2,'0');
+  return pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + d.getFullYear() +
+         ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function minutesLeft() {
+  if (!DEADLINE) return Infinity;
+  return Math.round((new Date(DEADLINE) - new Date()) / 60000);
+}
 
 function fmtDate() {
   const d = new Date();
@@ -566,7 +599,8 @@ function doLogout() {
 
 // ═══ GAME ═══
 async function buyNumber(n) {
-  await loadAll();
+  await loadAll();                          // ricarica TUTTO incluso DEADLINE aggiornato
+  if (!U.admin && isExpired()) throw new Error('⏰ Scadenza superata — gli acquisti sono chiusi.');
   const existing = NUMS[n];
   if (existing) throw new Error('Il numero ' + n + ' è già stato acquistato da ' + existing);
   const u = USERS[U.user];
@@ -617,6 +651,8 @@ function renderHeader() {
 }
 
 function renderBoard() {
+  renderDeadlineBanner();
+  const expired = !U.admin && isExpired();
   const g = document.getElementById('board-grid');
   g.innerHTML = '';
   for (let i = 1; i <= 90; i++) {
@@ -628,6 +664,9 @@ function renderBoard() {
     if (U.admin) {
       div.className = 'nc ' + (owner ? 'nc-admin-taken' : 'nc-admin-free');
       div.addEventListener('click', () => adminClickNumber(i));
+    } else if (expired) {
+      // scaduto: tutte le celle disabilitate, numeri occupati mostrano proprietario
+      div.className = 'nc' + (mine ? ' nc-mine' : taken ? ' nc-taken' : ' nc-closed');
     } else {
       div.className = 'nc' + (mine ? ' nc-mine' : taken ? ' nc-taken' : '');
       if (!owner) div.addEventListener('click', () => openModal(i));
@@ -641,6 +680,25 @@ function renderBoard() {
       div.appendChild(tag);
     }
     g.appendChild(div);
+  }
+}
+
+function renderDeadlineBanner() {
+  const el = document.getElementById('deadline-banner');
+  if (!el) return;
+  if (!DEADLINE) { el.className = 'deadline-banner hidden'; el.textContent = ''; return; }
+  if (isExpired()) {
+    el.className = 'deadline-banner closed';
+    el.innerHTML = '🔒 <strong>Estrazione chiusa</strong> — acquisti scaduti il ' + fmtDeadline(DEADLINE);
+  } else {
+    const mins = minutesLeft();
+    if (mins <= 60) {
+      el.className = 'deadline-banner warn';
+      el.innerHTML = '⚠️ <strong>Scadenza imminente!</strong> Puoi acquistare numeri fino alle <strong>' + fmtDeadline(DEADLINE) + '</strong> — meno di ' + (mins <= 1 ? '1 minuto' : mins + ' minuti') + ' rimasti!';
+    } else {
+      el.className = 'deadline-banner open';
+      el.innerHTML = '🟢 Acquisti aperti fino al <strong>' + fmtDeadline(DEADLINE) + '</strong>';
+    }
   }
 }
 
@@ -685,6 +743,7 @@ async function renderAdmin() {
       <td><button class="btn btn-red btn-sm" onclick="openDeleteModal('${uname}')">Elimina</button></td>`;
     tbody.appendChild(tr);
   });
+  renderDeadlineAdmin();
   renderLog();
 }
 
@@ -746,8 +805,30 @@ async function clearLog() {
   toast('Log svuotato.', 'ok');
 }
 
+function renderDeadlineAdmin() {
+  const inp = document.getElementById('dl-input');
+  const st  = document.getElementById('dl-status');
+  if (!inp || !st) return;
+  if (DEADLINE) {
+    // Converte ISO → formato datetime-local (YYYY-MM-DDTHH:MM)
+    const d = new Date(DEADLINE);
+    const pad = n => String(n).padStart(2,'0');
+    inp.value = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
+                'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    if (isExpired()) {
+      st.innerHTML = '<span style="color:#f09090;">🔒 Scaduta il ' + fmtDeadline(DEADLINE) + ' — acquisti bloccati</span>';
+    } else {
+      st.innerHTML = '<span style="color:var(--mine-text);">🟢 Attiva — scade il ' + fmtDeadline(DEADLINE) + '</span>';
+    }
+  } else {
+    inp.value = '';
+    st.innerHTML = '<span style="color:var(--muted);">Nessuna scadenza impostata — acquisti sempre aperti</span>';
+  }
+}
+
 // ═══ MODAL ═══
 function openModal(n) {
+  if (!U.admin && isExpired()) { toast('⏰ Scadenza superata — acquisti chiusi.', 'err'); return; }
   if (U.credits < 1) { toast('Crediti insufficienti!', 'err'); return; }
   pendingN = n;
   document.getElementById('modal-n').textContent = n;
@@ -944,151 +1025,31 @@ document.getElementById('btn-add-user').onclick = async () => {
   renderAdmin();
 };
 
+document.getElementById('btn-dl-save').onclick = async () => {
+  const val = document.getElementById('dl-input').value;
+  if (!val) { toast('Scegli una data e ora.', 'err'); return; }
+  DEADLINE = new Date(val).toISOString();
+  await saveDeadline();
+  await addLog('Admin ha impostato la scadenza acquisti: <b>' + fmtDeadline(DEADLINE) + '</b>');
+  renderDeadlineAdmin();
+  renderBoard();
+  toast('Scadenza salvata: ' + fmtDeadline(DEADLINE), 'ok');
+};
+
+document.getElementById('btn-dl-clear').onclick = async () => {
+  DEADLINE = null;
+  await saveDeadline();
+  await addLog('Admin ha rimosso la scadenza acquisti');
+  renderDeadlineAdmin();
+  renderBoard();
+  toast('Scadenza rimossa — acquisti sempre aperti.', 'ok');
+};
+
 // Auto-refresh board every 20s while on board tab
 setInterval(async () => {
   const boardVisible = !document.getElementById('page-board').classList.contains('hidden');
   if (U && boardVisible) { await loadAll(); renderBoard(); }
 }, 20000);
-
-// ═══ IMPORT UTENTI DA FILE ═══
-let importData = []; // righe parsed pronte all'importazione
-
-document.getElementById('import-file').onchange = function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  document.getElementById('import-filename').textContent = file.name;
-  importData = [];
-  document.getElementById('import-preview').classList.add('hidden');
-  document.getElementById('btn-import-confirm').classList.add('hidden');
-  document.getElementById('btn-import-cancel').classList.add('hidden');
-
-  const reader = new FileReader();
-  const isCSV = file.name.toLowerCase().endsWith('.csv');
-
-  reader.onload = function(ev) {
-    try {
-      let rows = [];
-      if (isCSV) {
-        // Parsing CSV manuale
-        const text = ev.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        const headers = lines[0].split(/[,;]/).map(h => h.trim().toLowerCase());
-        const iUser = headers.indexOf('username');
-        const iPass = headers.indexOf('password');
-        const iCreds = headers.indexOf('crediti');
-        if (iUser === -1 || iPass === -1) throw new Error('Colonne "username" e "password" non trovate');
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(/[,;]/);
-          const u = (cols[iUser] || '').trim();
-          const p = (cols[iPass] || '').trim();
-          const c = iCreds !== -1 ? parseInt(cols[iCreds]) || 0 : null;
-          if (u && p) rows.push({ u, p, c });
-        }
-      } else {
-        // Parsing XLSX con SheetJS
-        const wb = XLSX.read(ev.target.result, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
-        // Normalizza intestazioni (case-insensitive)
-        json.forEach(row => {
-          const keys = Object.keys(row);
-          const kUser = keys.find(k => k.toLowerCase() === 'username');
-          const kPass = keys.find(k => k.toLowerCase() === 'password');
-          const kCred = keys.find(k => k.toLowerCase() === 'crediti');
-          if (!kUser || !kPass) return;
-          const u = String(row[kUser] || '').trim();
-          const p = String(row[kPass] || '').trim();
-          const c = kCred ? (parseInt(row[kCred]) || 0) : null;
-          if (u && p) rows.push({ u, p, c });
-        });
-      }
-
-      if (!rows.length) throw new Error('Nessuna riga valida trovata nel file');
-
-      const defCreds = parseInt(document.getElementById('import-creds').value) || 0;
-      importData = rows.map(r => ({ u: r.u, p: r.p, c: r.c !== null ? r.c : defCreds }));
-
-      // Anteprima
-      const prev = document.getElementById('import-preview');
-      let html = '<table style="width:100%;border-collapse:collapse;">';
-      html += '<tr style="color:var(--muted);border-bottom:1px solid var(--border);">'
-            + '<th style="text-align:left;padding:0.3rem 0.5rem;">#</th>'
-            + '<th style="text-align:left;padding:0.3rem 0.5rem;">Username</th>'
-            + '<th style="text-align:left;padding:0.3rem 0.5rem;">Password</th>'
-            + '<th style="text-align:left;padding:0.3rem 0.5rem;">Crediti</th></tr>';
-      importData.forEach((r, i) => {
-        html += `<tr style="border-bottom:1px solid var(--border);">
-          <td style="padding:0.25rem 0.5rem;color:var(--muted);">${i+1}</td>
-          <td style="padding:0.25rem 0.5rem;font-weight:600;">${r.u}</td>
-          <td style="padding:0.25rem 0.5rem;color:var(--muted);">${r.p}</td>
-          <td style="padding:0.25rem 0.5rem;color:var(--gold);">${r.c}</td>
-        </tr>`;
-      });
-      html += '</table>';
-      prev.innerHTML = html;
-      prev.classList.remove('hidden');
-      document.getElementById('btn-import-confirm').classList.remove('hidden');
-      document.getElementById('btn-import-cancel').classList.remove('hidden');
-      showImportMsg(`${importData.length} utenti trovati. Verifica l'anteprima e clicca "Importa tutti".`, 'ok');
-    } catch(err) {
-      showImportMsg('Errore lettura file: ' + err.message, 'err');
-    }
-  };
-
-  if (isCSV) reader.readAsText(file, 'UTF-8');
-  else reader.readAsArrayBuffer(file);
-};
-
-function showImportMsg(txt, type) {
-  const el = document.getElementById('import-msg');
-  el.className = type;
-  el.textContent = txt;
-  el.classList.remove('hidden');
-}
-
-document.getElementById('btn-import-cancel').onclick = () => {
-  importData = [];
-  document.getElementById('import-file').value = '';
-  document.getElementById('import-filename').textContent = 'Nessun file selezionato';
-  document.getElementById('import-preview').classList.add('hidden');
-  document.getElementById('btn-import-confirm').classList.add('hidden');
-  document.getElementById('btn-import-cancel').classList.add('hidden');
-  document.getElementById('import-msg').classList.add('hidden');
-};
-
-document.getElementById('btn-import-confirm').onclick = async () => {
-  if (!importData.length) return;
-  const btn = document.getElementById('btn-import-confirm');
-  btn.disabled = true;
-  btn.textContent = 'Importazione in corso…';
-  await loadAll();
-
-  let aggiunti = 0, saltati = [];
-  importData.forEach(r => {
-    if (USERS[r.u]) { saltati.push(r.u); return; }
-    USERS[r.u] = { pw: r.p, admin: false, credits: r.c, nums: [] };
-    aggiunti++;
-  });
-
-  await saveUsers();
-  const logMsg = `Admin ha importato <b>${aggiunti}</b> utenti da file`
-    + (saltati.length ? ` (saltati ${saltati.length} già esistenti: ${saltati.join(', ')})` : '');
-  await addLog(logMsg);
-
-  let msg = `✓ ${aggiunti} utenti importati con successo.`;
-  if (saltati.length) msg += ` ${saltati.length} saltati (username già esistenti).`;
-  showImportMsg(msg, 'ok');
-
-  btn.disabled = false;
-  btn.textContent = '✓ Importa tutti';
-  importData = [];
-  document.getElementById('import-file').value = '';
-  document.getElementById('import-filename').textContent = 'Nessun file selezionato';
-  document.getElementById('import-preview').classList.add('hidden');
-  document.getElementById('btn-import-confirm').classList.add('hidden');
-  document.getElementById('btn-import-cancel').classList.add('hidden');
-  renderAdmin();
-};
 
 // ═══ INIT ═══
 (async () => {
