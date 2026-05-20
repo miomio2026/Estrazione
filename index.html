@@ -401,12 +401,16 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
       <div class="admin-card">
         <div class="admin-card-title">🏷 Nome Evento / Estrazione</div>
         <div style="font-family:sans-serif;font-size:0.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.6;">
-          Imposta il nome e la descrizione dell'estrazione. Verranno mostrati nel titolo della pagina a tutti gli utenti.
+          Imposta il titolo principale, il nome evento e la descrizione. Verranno mostrati a tutti gli utenti.
         </div>
         <div style="display:grid;gap:0.75rem;">
           <div>
-            <label>Nome evento (es. "Estrazione Lotteria del 07/04/2026!!!")</label>
-            <input id="ev-name" type="text" placeholder="Lascia vuoto per non mostrare il titolo evento" style="width:100%;">
+            <label>Titolo principale (quello grande in cima — default: "ESTRAZIONE LOTTERIA!!!")</label>
+            <input id="ev-title" type="text" placeholder="Es. TOMBOLA DI NATALE 2026 — lascia vuoto per il default" style="width:100%;">
+          </div>
+          <div>
+            <label>Nome evento / sottotitolo (es. "Estrazione Lotteria del 07/04/2026!!!")</label>
+            <input id="ev-name" type="text" placeholder="Lascia vuoto per non mostrare il sottotitolo evento" style="width:100%;">
           </div>
           <div>
             <label>Descrizione (es. "Primo numero estratto della ruota Nazionale")</label>
@@ -415,8 +419,8 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
         </div>
         <div id="ev-status" style="margin-top:0.8rem;font-family:sans-serif;font-size:0.85rem;"></div>
         <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap;">
-          <button class="btn btn-gold btn-sm" id="btn-ev-save">Salva evento</button>
-          <button class="btn btn-ghost btn-sm" id="btn-ev-clear">Rimuovi evento</button>
+          <button class="btn btn-gold btn-sm" id="btn-ev-save">Salva</button>
+          <button class="btn btn-ghost btn-sm" id="btn-ev-clear">Ripristina default</button>
         </div>
       </div>
 
@@ -546,10 +550,12 @@ let USERS = {};         // all users
 let NUMS = {};          // {1..90: username|null}
 let LOG = [];           // activity log entries
 let DEADLINE = null;    // ISO string oppure null = nessuna scadenza
-let EVENT_NAME = null;  // Nome evento (es. 'Estrazione Lotteria del 07/04/2026')
+let EVENT_NAME = null;  // Nome evento/sottotitolo (es. 'Estrazione Lotteria del 07/04/2026')
 let EVENT_DESC = null;  // Descrizione (es. 'Primo numero estratto della ruota Nazionale')
+let SITE_TITLE = null;  // Titolo principale (default: 'ESTRAZIONE LOTTERIA!!!')
 let pendingN = null;
-const SK = { users: 'users', nums: 'nums', log: 'log', deadline: 'deadline', eventName: 'eventName', eventDesc: 'eventDesc' };
+const DEFAULT_TITLE = 'ESTRAZIONE LOTTERIA!!!';
+const SK = { users: 'users', nums: 'nums', log: 'log', deadline: 'deadline', eventName: 'eventName', eventDesc: 'eventDesc', siteTitle: 'siteTitle' };
 
 // ═══ DATA ═══
 async function loadAll() {
@@ -590,6 +596,9 @@ async function loadAll() {
   try {
     EVENT_DESC = await store.get(SK.eventDesc);
   } catch { EVENT_DESC = null; }
+  try {
+    SITE_TITLE = await store.get(SK.siteTitle);
+  } catch { SITE_TITLE = null; }
 }
 
 async function saveUsers() { await store.set(SK.users, USERS); }
@@ -1113,43 +1122,55 @@ document.getElementById('btn-dl-clear').onclick = async () => {
 
 // ═══ GESTIONE NOME EVENTO ═══
 async function loadEventFields() {
-  const nameEl = document.getElementById('ev-name');
-  const descEl = document.getElementById('ev-desc');
-  if (!nameEl || !descEl) return;
-  nameEl.value = EVENT_NAME || '';
-  descEl.value = EVENT_DESC || '';
+  const titleEl = document.getElementById('ev-title');
+  const nameEl  = document.getElementById('ev-name');
+  const descEl  = document.getElementById('ev-desc');
+  if (!nameEl || !descEl || !titleEl) return;
+  titleEl.value = SITE_TITLE || '';
+  nameEl.value  = EVENT_NAME || '';
+  descEl.value  = EVENT_DESC || '';
   const st = document.getElementById('ev-status');
-  if (EVENT_NAME) {
-    st.innerHTML = '<span style="color:var(--mine-text);">🟢 Evento attivo: <strong>' + EVENT_NAME + '</strong></span>';
+  const activeTitle = SITE_TITLE || DEFAULT_TITLE;
+  if (SITE_TITLE || EVENT_NAME) {
+    st.innerHTML = '<span style="color:var(--mine-text);">🟢 Titolo attivo: <strong>' + activeTitle + '</strong>' +
+      (EVENT_NAME ? ' — sottotitolo: <strong>' + EVENT_NAME + '</strong>' : '') + '</span>';
   } else {
-    st.innerHTML = '<span style="color:var(--muted);">Nessun evento impostato — il titolo mostra solo "ESTRAZIONE LOTTERIA!!!"</span>';
+    st.innerHTML = '<span style="color:var(--muted);">Nessuna personalizzazione — titolo default: "' + DEFAULT_TITLE + '"</span>';
   }
 }
 
 document.getElementById('btn-ev-save').onclick = async () => {
-  const name = document.getElementById('ev-name').value.trim();
-  const desc = document.getElementById('ev-desc').value.trim();
-  if (!name) { toast('Inserisci almeno il nome evento.', 'err'); return; }
-  EVENT_NAME = name;
-  EVENT_DESC = desc || null;
-  await store.set(SK.eventName, EVENT_NAME);
+  const title = document.getElementById('ev-title').value.trim();
+  const name  = document.getElementById('ev-name').value.trim();
+  const desc  = document.getElementById('ev-desc').value.trim();
+  SITE_TITLE  = title || null;
+  EVENT_NAME  = name  || null;
+  EVENT_DESC  = desc  || null;
+  if (SITE_TITLE) await store.set(SK.siteTitle, SITE_TITLE);
+  else { try { await store.set(SK.siteTitle, null); } catch {} }
+  if (EVENT_NAME) await store.set(SK.eventName, EVENT_NAME);
+  else { try { await store.set(SK.eventName, null); } catch {} }
   if (EVENT_DESC) await store.set(SK.eventDesc, EVENT_DESC);
   else { try { await store.set(SK.eventDesc, null); } catch {} }
-  await addLog('Admin ha impostato il nome evento: <b>' + EVENT_NAME + '</b>' + (EVENT_DESC ? ' — ' + EVENT_DESC : ''));
+  await addLog('Admin ha aggiornato titolo/evento: titolo=<b>' + (SITE_TITLE || DEFAULT_TITLE) + '</b>' +
+    (EVENT_NAME ? ', sottotitolo=<b>' + EVENT_NAME + '</b>' : '') +
+    (EVENT_DESC ? ', desc=<b>' + EVENT_DESC + '</b>' : ''));
   renderEventTitle();
   loadEventFields();
-  toast('Evento salvato.', 'ok');
+  toast('Salvato.', 'ok');
 };
 
 document.getElementById('btn-ev-clear').onclick = async () => {
+  SITE_TITLE = null;
   EVENT_NAME = null;
   EVENT_DESC = null;
+  try { await store.set(SK.siteTitle, null); } catch {}
   try { await store.set(SK.eventName, null); } catch {}
   try { await store.set(SK.eventDesc, null); } catch {}
-  await addLog('Admin ha rimosso il nome evento.');
+  await addLog('Admin ha ripristinato il titolo default: <b>' + DEFAULT_TITLE + '</b>');
   renderEventTitle();
   loadEventFields();
-  toast('Evento rimosso.', 'ok');
+  toast('Ripristinato — titolo default attivo.', 'ok');
 };
 
 // Auto-refresh board every 20s while on board tab
@@ -1160,11 +1181,22 @@ setInterval(async () => {
 
 // ═══ TITOLO EVENTO DINAMICO ═══
 function renderEventTitle() {
-  // Legge EVENT_NAME e EVENT_DESC da Firebase (chiavi tombola/eventName, tombola/eventDesc)
-  const name = typeof EVENT_NAME !== 'undefined' ? EVENT_NAME : null;
-  const desc = typeof EVENT_DESC !== 'undefined' ? EVENT_DESC : null;
+  const title = (typeof SITE_TITLE !== 'undefined' && SITE_TITLE) ? SITE_TITLE : DEFAULT_TITLE;
+  const name  = (typeof EVENT_NAME !== 'undefined') ? EVENT_NAME : null;
+  const desc  = (typeof EVENT_DESC !== 'undefined') ? EVENT_DESC : null;
 
-  // Login page
+  // Titolo tab browser
+  document.title = title;
+
+  // Titolo principale login
+  const loginTitleEl = document.getElementById('login-title-text');
+  if (loginTitleEl) loginTitleEl.textContent = title;
+
+  // Titolo principale header app
+  const appTitleEl = document.getElementById('app-title-text');
+  if (appTitleEl) appTitleEl.textContent = title;
+
+  // Login page — sottotitolo evento
   const loginSub = document.getElementById('login-event-sub');
   const loginDesc = document.getElementById('login-event-desc');
   const loginSubDefault = document.getElementById('login-sub-default');
@@ -1182,7 +1214,7 @@ function renderEventTitle() {
     }
   }
 
-  // App header
+  // App header event info
   const appInfo = document.getElementById('app-event-info');
   if (appInfo) {
     if (name) {
