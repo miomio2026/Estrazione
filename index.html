@@ -426,7 +426,8 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
             <label>Edizione attiva</label>
             <select class="edition-sel" id="edition-sel" style="width:100%;max-width:100%;"></select>
           </div>
-          <button class="btn btn-red btn-sm" id="btn-del-edition" style="white-space:nowrap;" title="Elimina edizione selezionata (non quella corrente)">🗑 Elimina</button>
+          <button class="btn btn-gold btn-sm" id="btn-switch-edition" style="white-space:nowrap;" title="Passa all'edizione selezionata">↩ Cambia</button>
+          <button class="btn btn-red btn-sm" id="btn-del-edition" style="white-space:nowrap;" title="Elimina l'edizione selezionata (deve essere diversa da quella attiva)">🗑 Elimina</button>
         </div>
 
         <!-- Riga 2: crea nuova edizione -->
@@ -1244,6 +1245,10 @@ document.getElementById('btn-refresh').onclick = async () => {
 document.addEventListener('click', e => {
   if (e.target.id === 'btn-export') exportReport();
   if (e.target.id === 'btn-add-edition') createEdition(document.getElementById('new-edition-name')?.value || '');
+  if (e.target.id === 'btn-switch-edition') {
+    const sel = document.getElementById('edition-sel');
+    if (sel && sel.value) switchEdition(sel.value);
+  }
   if (e.target.id === 'btn-del-edition') openDeleteEditionModal();
   if (e.target.id === 'btn-del-edition-cancel') closeDeleteEditionModal();
   if (e.target.id === 'btn-del-edition-confirm') confirmDeleteEdition();
@@ -1255,7 +1260,7 @@ document.addEventListener('input', e => {
   if (e.target.id === 'admin-search') filterAdminTable();
 });
 document.addEventListener('change', e => {
-  if (e.target.id === 'edition-sel') switchEdition(e.target.value);
+  // Il select edition-sel non switcha più in automatico — usa il pulsante "Cambia"
 });
 
 document.getElementById('btn-cancel').onclick  = closeModal;
