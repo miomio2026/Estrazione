@@ -645,7 +645,7 @@ const fbDb   = firebase.database();    // SDK Realtime DB per listener e transac
 
 // ═══ EDIZIONE CORRENTE ═══
 // Ogni edizione è un nodo separato nel DB (es. "tombola", "tombola_natale_2026", ...)
-let CURRENT_EDITION = 'tombola';
+let CURRENT_EDITION = 'tombola'; // verrà aggiornato da Firebase nell'init
 
 // ═══ STORAGE ABSTRACTION (Firebase Realtime DB — REST per bulk, SDK per transaction) ═══
 const store = (() => {
@@ -698,6 +698,23 @@ const store = (() => {
     // Rimuove edizione da _editions
     async unregisterEdition(name) {
       await fetch(`${FIREBASE_URL}/_editions/${name}.json?auth=${FIREBASE_KEY}`, { method: 'DELETE' });
+    },
+    // Salva l'edizione attiva nel nodo _config/activeEdition
+    async saveActiveEdition(name) {
+      await fetch(`${FIREBASE_URL}/_config/activeEdition.json?auth=${FIREBASE_KEY}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(name)
+      });
+    },
+    // Legge l'edizione attiva da _config/activeEdition (null se non impostata)
+    async loadActiveEdition() {
+      try {
+        const r = await fetch(`${FIREBASE_URL}/_config/activeEdition.json?auth=${FIREBASE_KEY}`);
+        if (!r.ok) return null;
+        const data = await r.json();
+        return (typeof data === 'string' && data) ? data : null;
+      } catch { return null; }
     }
   };
 })();
@@ -1518,6 +1535,7 @@ async function loadEditions() {
 async function switchEdition(name) {
   stopRealtimeListeners();
   CURRENT_EDITION = name;
+  store.saveActiveEdition(name); // persiste su Firebase — funziona su tutti i dispositivi
   await loadAll();
   startRealtimeListeners();
   renderBoard();
@@ -1941,6 +1959,21 @@ document.getElementById('btn-import-confirm').onclick = async () => {
       // se fallisce non è critico — le edizioni già in _editions saranno comunque visibili
       await store.registerEdition(CURRENT_EDITION);
     }
+    // Legge l'edizione attiva da Firebase (_config/activeEdition)
+    try {
+      const savedEditions = await store.listEditions();
+      const savedActive   = await store.loadActiveEdition();
+      if (savedActive && savedEditions.includes(savedActive)) {
+        // L'edizione salvata esiste ancora: usala
+        CURRENT_EDITION = savedActive;
+        await loadAll(); // ricarica i dati dell'edizione corretta
+      } else if (savedEditions.length > 0) {
+        // Edizione salvata non trovata o assente: usa la prima disponibile
+        CURRENT_EDITION = savedEditions[0];
+        await store.saveActiveEdition(CURRENT_EDITION);
+        await loadAll();
+      }
+    } catch {}
     renderEventTitle(); show('login');
   } catch(e) {
     document.getElementById('scr-loading').innerHTML =
