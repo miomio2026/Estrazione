@@ -240,6 +240,18 @@ input[type=datetime-local] {
 }
 input[type=datetime-local]:focus { border-color: var(--gold); }
 
+/* ─── PASSWORD TOGGLE ─── */
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 2.6rem; width: 100%; }
+.pw-eye {
+  position: absolute; right: 0.7rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; padding: 0;
+  color: var(--muted); display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s;
+}
+.pw-eye:hover { color: var(--cream); }
+.pw-eye svg { width: 18px; height: 18px; pointer-events: none; }
+
 /* ─── OFFLINE WARNING ─── */
 .offline-banner {
   background: #2a2010; border-bottom: 1px solid #5a4a20;
@@ -275,7 +287,14 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
     <label>Username</label>
     <input id="i-user" type="text" placeholder="username" autocomplete="username">
     <label>Password</label>
-    <input id="i-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+    <div class="pw-wrap">
+      <input id="i-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+      <button type="button" class="pw-eye" onclick="togglePw('i-pass',this)" tabindex="-1" aria-label="Mostra/Nascondi password">
+        <svg id="eye-i-pass" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
+    </div>
     <button class="btn btn-gold btn-full" id="btn-auth">Accedi</button>
   </div>
 </div>
@@ -1920,6 +1939,20 @@ document.getElementById('btn-import-confirm').onclick = async () => {
   document.getElementById('btn-import-cancel').classList.add('hidden');
   renderAdmin();
 };
+
+// ═══ PASSWORD TOGGLE ═══
+const EYE_OPEN  = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+const EYE_SLASH = '<line x1="1" y1="1" x2="23" y2="23"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 11 7 11 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 1 12s4 7 11 7a9.74 9.74 0 0 0 5.39-1.61"/>';
+
+function togglePw(inputId, btn) {
+  const input = document.getElementById(inputId);
+  const svg   = btn.querySelector('svg');
+  if (!input || !svg) return;
+  const isHidden = input.type === 'password';
+  input.type  = isHidden ? 'text' : 'password';
+  svg.innerHTML = isHidden ? EYE_SLASH : EYE_OPEN;
+  btn.style.color = isHidden ? 'var(--gold)' : 'var(--muted)';
+}
 
 // ═══ INIT ═══
 // Copia il src del logo dalla pagina login all'img dell'header (evita duplicare il base64)
