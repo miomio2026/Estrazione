@@ -678,12 +678,13 @@ const store = (() => {
       ref.on('value', snap => cb(snap.val()));
       return () => ref.off('value');  // restituisce funzione di cleanup
     },
-    // Lista nodi radice (per edizioni)
+    // Lista nodi radice (per edizioni) — esclude il nodo indice _editions
     async listEditions() {
       const r = await fetch(`${FIREBASE_URL}.json?auth=${FIREBASE_KEY}&shallow=true`);
       if (!r.ok) return [];
       const data = await r.json();
-      return data ? Object.keys(data) : [];
+      if (!data) return [];
+      return Object.keys(data).filter(k => k !== '_editions');
     }
   };
 })();
@@ -1429,7 +1430,8 @@ function stopRealtimeListeners() {
 
 // ═══ CONTATORE NUMERI ═══
 function renderCounter() {
-  const avail = Object.values(NUMS).filter(v => v === null).length;
+  const taken = Object.values(NUMS).filter(v => v !== null && v !== undefined).length;
+  const avail = 90 - taken;
   const el    = document.getElementById('hdr-counter');
   const span  = document.getElementById('hdr-avail');
   if (!el || !span) return;
@@ -1477,9 +1479,21 @@ async function loadEditions() {
   try { editions = await store.listEditions(); } catch {}
   if (!editions.includes('tombola')) editions.unshift('tombola');
   editions = [...new Set(editions)].sort();
+
+  // Popola select edizione attiva
   sel.innerHTML = editions.map(e =>
     `<option value="${e}" ${e === CURRENT_EDITION ? 'selected' : ''}>${e}</option>`
   ).join('');
+
+  // Popola select edizione sorgente (clone) — esclude l'edizione corrente
+  const cloneSel = document.getElementById('clone-src-sel');
+  if (cloneSel) {
+    const prevVal = cloneSel.value;
+    cloneSel.innerHTML = editions.map(e =>
+      `<option value="${e}" ${e === (prevVal || CURRENT_EDITION) ? 'selected' : ''}>${e}</option>`
+    ).join('');
+  }
+
   const st = document.getElementById('edition-status');
   if (st) st.innerHTML = `<span style="color:var(--mine-text);">🟢 Edizione attiva: <strong>${CURRENT_EDITION}</strong></span>`;
 }
@@ -1512,6 +1526,151 @@ async function createEdition(name) {
   await switchEdition(safe);
   await addLog('Admin ha creato la nuova edizione: <b>' + safe + '</b>');
   toast('Edizione "' + safe + '" creata e attivata!', 'ok');
+}
+
+// ═══ ELIMINA EDIZIONE ═══
+let _editionToDelete = null;
+
+function openDeleteEditionModal() {
+  const sel = document.getElementById('edition-sel');
+  const name = sel ? sel.value : null;
+  if (!name) { toast('Seleziona un\'edizione da eliminare.', 'err'); return; }
+  if (name === CURRENT_EDITION) { toast('Non puoi eliminare l\'edizione attualmente attiva. Cambia edizione prima.', 'err'); return; }
+  _editionToDelete = name;
+  const body = document.getElementById('modal-del-edition-body');
+  if (body) body.innerHTML = `Stai per eliminare l\'edizione <strong style="color:var(--gold)">${name}</strong>.`;
+  document.getElementById('modal-del-edition').classList.remove('hidden');
+}
+
+function closeDeleteEditionModal() {
+  _editionToDelete = null;
+  document.getElementById('modal-del-edition').classList.add('hidden');
+}
+
+async function confirmDeleteEdition() {
+  const name = _editionToDelete;
+  closeDeleteEditionModal();
+  if (!name) return;
+  try {
+    const r = await fetch(`${FIREBASE_URL}/${name}.json?auth=${FIREBASE_KEY}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Errore HTTP ' + r.status);
+    await addLog('Admin ha eliminato l\'edizione: <b>' + name + '</b>');
+    toast('Edizione "' + name + '" eliminata.', 'ok');
+    loadEditions();
+    renderAdmin();
+  } catch(e) {
+    toast('Errore eliminazione: ' + e.message, 'err');
+  }
+}
+
+// ═══ CLONA EDIZIONE ═══
+async function openCloneModal() {
+  const srcSel = document.getElementById('clone-src-sel');
+  const destInput = document.getElementById('clone-dest-name');
+  const src = srcSel ? srcSel.value : '';
+  const dest = destInput ? destInput.value.trim() : '';
+  if (!src) { toast('Seleziona un\'edizione sorgente.', 'err'); return; }
+  if (!dest) { toast('Inserisci un nome per la nuova edizione.', 'err'); return; }
+  const safeDest = dest.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  if (!safeDest) { toast('Nome edizione non valido.', 'err'); return; }
+
+  const copyUsers    = document.getElementById('clone-opt-users')?.checked ?? true;
+  const copyNums     = document.getElementById('clone-opt-nums')?.checked ?? false;
+  const copyEvent    = document.getElementById('clone-opt-event')?.checked ?? true;
+  const copyDeadline = document.getElementById('clone-opt-deadline')?.checked ?? false;
+
+  const body = document.getElementById('modal-clone-body');
+  if (body) {
+    let items = [];
+    if (copyUsers)    items.push('👥 Utenti (username + password + crediti)');
+    if (copyNums)     items.push('🔢 Numeri acquistati');
+    if (copyEvent)    items.push('🏷 Titolo / nome evento / descrizione');
+    if (copyDeadline) items.push('⏰ Scadenza acquisti');
+    body.innerHTML =
+      `Sorgente: <strong style="color:var(--gold)">${src}</strong><br>` +
+      `Destinazione: <strong style="color:var(--gold)">${safeDest}</strong><br><br>` +
+      `Cosa verrà copiato:<br>` +
+      (items.length ? items.map(i => `• ${i}`).join('<br>') : '(nulla — verrà creata una edizione vuota)');
+  }
+  document.getElementById('modal-clone-edition').classList.remove('hidden');
+}
+
+function closeCloneModal() {
+  document.getElementById('modal-clone-edition').classList.add('hidden');
+}
+
+async function confirmCloneEdition() {
+  closeCloneModal();
+  const srcSel    = document.getElementById('clone-src-sel');
+  const destInput = document.getElementById('clone-dest-name');
+  const src       = srcSel    ? srcSel.value.trim()    : '';
+  const dest      = destInput ? destInput.value.trim() : '';
+  const safeDest  = dest.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  if (!src || !safeDest) { toast('Parametri mancanti per la clonazione.', 'err'); return; }
+
+  const copyUsers    = document.getElementById('clone-opt-users')?.checked ?? true;
+  const copyNums     = document.getElementById('clone-opt-nums')?.checked ?? false;
+  const copyEvent    = document.getElementById('clone-opt-event')?.checked ?? true;
+  const copyDeadline = document.getElementById('clone-opt-deadline')?.checked ?? false;
+
+  const statusEl = document.getElementById('clone-status');
+  if (statusEl) statusEl.textContent = 'Clonazione in corso…';
+
+  try {
+    // Leggi i dati sorgente
+    const rSrc = await fetch(`${FIREBASE_URL}/${src}.json?auth=${FIREBASE_KEY}`);
+    if (!rSrc.ok) throw new Error('Impossibile leggere l\'edizione sorgente.');
+    const srcData = await rSrc.json() || {};
+
+    // Costruisci il payload destinazione
+    const payload = {};
+    const adminEntry = { admin: true, credits: 999, nums: [] };
+    payload.users = { admin: adminEntry };
+
+    if (copyUsers && srcData.users) {
+      // Copia tutti gli utenti non-admin, azzerando i numeri se non copiamo i numeri
+      Object.entries(srcData.users).forEach(([uname, udata]) => {
+        if (udata.admin) return;
+        payload.users[uname] = {
+          pw: udata.pw || '',
+          admin: false,
+          credits: udata.credits ?? 0,
+          nums: copyNums ? (udata.nums || []) : []
+        };
+      });
+    }
+
+    if (copyNums && srcData.nums) {
+      payload.nums = srcData.nums;
+    }
+
+    if (copyEvent) {
+      if (srcData.siteTitle)  payload.siteTitle  = srcData.siteTitle;
+      if (srcData.eventName)  payload.eventName  = srcData.eventName;
+      if (srcData.eventDesc)  payload.eventDesc  = srcData.eventDesc;
+    }
+
+    if (copyDeadline && srcData.deadline) {
+      payload.deadline = srcData.deadline;
+    }
+
+    // Scrivi nella destinazione
+    const rDest = await fetch(`${FIREBASE_URL}/${safeDest}.json?auth=${FIREBASE_KEY}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!rDest.ok) throw new Error('Errore scrittura destinazione: ' + rDest.status);
+
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--mine-text);">✓ Clonazione completata!</span>`;
+    if (destInput) destInput.value = '';
+    await addLog('Admin ha clonato l\'edizione <b>' + src + '</b> → <b>' + safeDest + '</b>');
+    toast('Edizione "' + safeDest + '" creata dalla clonazione di "' + src + '"!', 'ok');
+    loadEditions();
+  } catch(e) {
+    if (statusEl) statusEl.textContent = 'Errore: ' + e.message;
+    toast('Errore clonazione: ' + e.message, 'err');
+  }
 }
 
 // ═══ TITOLO EVENTO DINAMICO ═══
