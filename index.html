@@ -607,12 +607,23 @@ const store = (() => {
       ref.on('value', snap => cb(snap.val()));
       return () => ref.off('value');  // restituisce funzione di cleanup
     },
-    // Lista nodi radice (per edizioni)
+    // Lista edizioni dal nodo registro dedicato (sempre leggibile)
     async listEditions() {
-      const r = await fetch(`${FIREBASE_URL}.json?auth=${FIREBASE_KEY}&shallow=true`);
-      if (!r.ok) return [];
-      const data = await r.json();
-      return data ? Object.keys(data) : [];
+      try {
+        const r = await fetch(`${FIREBASE_URL}/_editions.json?auth=${FIREBASE_KEY}`);
+        if (!r.ok) return ['tombola'];
+        const data = await r.json();
+        if (!data) return ['tombola'];
+        // _editions è un oggetto { tombola: true, ferragosto_2026: true, ... }
+        return Object.keys(data);
+      } catch { return ['tombola']; }
+    },
+    async registerEdition(name) {
+      await fetch(`${FIREBASE_URL}/_editions/${name}.json?auth=${FIREBASE_KEY}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(true)
+      });
     }
   };
 })();
@@ -1439,6 +1450,8 @@ async function createEdition(name) {
     }
     return;
   }
+  // Registra nel nodo _editions
+  await store.registerEdition(safe);
   document.getElementById('new-edition-name').value = '';
   await switchEdition(safe);
   await addLog('Admin ha creato la nuova edizione: <b>' + safe + '</b>');
@@ -1668,6 +1681,11 @@ document.getElementById('btn-import-confirm').onclick = async () => {
         '</div>';
       return;
     }
+    // Registra automaticamente tombola e l'edizione corrente nel registro (idempotente)
+    try {
+      await store.registerEdition('tombola');
+      if (CURRENT_EDITION !== 'tombola') await store.registerEdition(CURRENT_EDITION);
+    } catch {}
     // Valida l'edizione salvata in localStorage: se non esiste su Firebase, ricade su 'tombola'
     try {
       const editions = await store.listEditions();
