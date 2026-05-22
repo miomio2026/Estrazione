@@ -678,13 +678,25 @@ const store = (() => {
       ref.on('value', snap => cb(snap.val()));
       return () => ref.off('value');  // restituisce funzione di cleanup
     },
-    // Lista nodi radice (per edizioni) — esclude il nodo indice _editions
+    // Lista edizioni dal registro _editions
     async listEditions() {
-      const r = await fetch(`${FIREBASE_URL}.json?auth=${FIREBASE_KEY}&shallow=true`);
-      if (!r.ok) return [];
-      const data = await r.json();
-      if (!data) return [];
-      return Object.keys(data).filter(k => k !== '_editions');
+      try {
+        const r = await fetch(`${FIREBASE_URL}/_editions.json?auth=${FIREBASE_KEY}`);
+        if (!r.ok) return ['tombola'];
+        const data = await r.json();
+        if (!data) return ['tombola'];
+        return Object.keys(data).sort();
+      } catch { return ['tombola']; }
+    },
+    // Registra edizione nel nodo _editions
+    async registerEdition(name) {
+      await fetch(`${FIREBASE_URL}/_editions/${name}.json?auth=${FIREBASE_KEY}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: 'true'
+      });
+    },
+    // Rimuove edizione da _editions
+    async unregisterEdition(name) {
+      await fetch(`${FIREBASE_URL}/_editions/${name}.json?auth=${FIREBASE_KEY}`, { method: 'DELETE' });
     }
   };
 })();
@@ -1506,7 +1518,14 @@ async function switchEdition(name) {
   renderBoard();
   renderHeader();
   renderCounter();
-  loadEditions();
+  renderEventTitle();
+  renderDeadlineBanner();
+  await loadEditions();
+  // Se siamo nella schermata admin, aggiorna anche la tabella utenti
+  const adminPage = document.getElementById('page-admin');
+  if (adminPage && !adminPage.classList.contains('hidden')) {
+    renderAdmin();
+  }
   toast('Edizione cambiata: ' + name, 'ok');
 }
 
@@ -1522,6 +1541,7 @@ async function createEdition(name) {
     body: JSON.stringify({ admin: adminEntry })
   });
   if (!r.ok) { toast('Errore nella creazione dell\'edizione.', 'err'); return; }
+  await store.registerEdition(safe);
   document.getElementById('new-edition-name').value = '';
   await switchEdition(safe);
   await addLog('Admin ha creato la nuova edizione: <b>' + safe + '</b>');
@@ -1554,6 +1574,7 @@ async function confirmDeleteEdition() {
   try {
     const r = await fetch(`${FIREBASE_URL}/${name}.json?auth=${FIREBASE_KEY}`, { method: 'DELETE' });
     if (!r.ok) throw new Error('Errore HTTP ' + r.status);
+    await store.unregisterEdition(name);
     await addLog('Admin ha eliminato l\'edizione: <b>' + name + '</b>');
     toast('Edizione "' + name + '" eliminata.', 'ok');
     loadEditions();
@@ -1661,6 +1682,7 @@ async function confirmCloneEdition() {
       body: JSON.stringify(payload)
     });
     if (!rDest.ok) throw new Error('Errore scrittura destinazione: ' + rDest.status);
+    await store.registerEdition(safeDest);
 
     if (statusEl) statusEl.innerHTML = `<span style="color:var(--mine-text);">✓ Clonazione completata!</span>`;
     if (destInput) destInput.value = '';
@@ -1897,6 +1919,23 @@ document.getElementById('btn-import-confirm').onclick = async () => {
       return;
     }
     await loadAll();
+    // Retrocompatibilità: scansiona la root per trovare edizioni non ancora registrate in _editions
+    // e le registra automaticamente. In questo modo ferragosto_2026 e tombola vengono entrambe trovate.
+    try {
+      const rRoot = await fetch(`${FIREBASE_URL}.json?auth=${FIREBASE_KEY}&shallow=true`);
+      if (rRoot.ok) {
+        const rootData = await rRoot.json();
+        if (rootData) {
+          const editionNodes = Object.keys(rootData).filter(k => k !== '_editions');
+          for (const ed of editionNodes) {
+            await store.registerEdition(ed);
+          }
+        }
+      }
+    } catch(e2) {
+      // se fallisce non è critico — le edizioni già in _editions saranno comunque visibili
+      await store.registerEdition(CURRENT_EDITION);
+    }
     renderEventTitle(); show('login');
   } catch(e) {
     document.getElementById('scr-loading').innerHTML =
