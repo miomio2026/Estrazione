@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estrazione Lotteria</title>
-<!-- Firebase Auth SDK (compat) -->
+<!-- Firebase SDKs (compat) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
 :root {
   --bg: #0a1a0e;
@@ -203,6 +204,24 @@ input:focus { border-color: var(--gold); }
 .log-entry { padding: 0.35rem 0.6rem; border-radius: 5px; background: var(--surface2); border-left: 3px solid var(--border2); line-height: 1.5; }
 .log-ts { color: var(--muted); margin-right: 0.75rem; font-size: 0.8rem; }
 
+/* ─── COUNTER ─── */
+.num-counter {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: 20px; padding: 0.28rem 0.85rem;
+  font-family: sans-serif; font-size: 0.85rem;
+}
+.num-counter .cn { color: var(--gold); font-weight: 700; }
+
+/* ─── EDITION SELECTOR ─── */
+select.edition-sel {
+  background: var(--bg); border: 1px solid var(--border2); border-radius: 7px;
+  padding: 0.55rem 0.8rem; color: var(--cream); font-size: 0.9rem;
+  font-family: sans-serif; outline: none; cursor: pointer;
+  transition: border-color 0.2s; max-width: 260px;
+}
+select.edition-sel:focus { border-color: var(--gold); }
+
 /* ─── DEADLINE ─── */
 .deadline-banner {
   border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 1rem;
@@ -234,8 +253,10 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
   .app-header { padding: 0.65rem 1rem; }
 }
 </style>
-<!-- SheetJS per lettura file Excel/CSV -->
+<!-- SheetJS per lettura/scrittura file Excel/CSV -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Canvas Confetti per effetto acquisto -->
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 </head>
 <body>
 
@@ -273,6 +294,7 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
     </div>
     <div class="header-right">
       <div class="badge-credits">Crediti: <span class="n" id="hdr-creds">0</span></div>
+      <div class="num-counter" id="hdr-counter" style="display:none;">Disponibili: <span class="cn" id="hdr-avail">90</span>/90</div>
       <span class="user-name" id="hdr-user">—</span>
       <div class="tabs">
         <button class="tab-btn on" data-tab="board">Tabellone</button>
@@ -361,7 +383,13 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
       </div>
 
       <div class="admin-card">
-        <div class="admin-card-title">Utenti Registrati</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem;flex-wrap:wrap;gap:0.5rem;">
+          <div class="admin-card-title" style="margin-bottom:0;">Utenti Registrati</div>
+          <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+            <input id="admin-search" type="text" placeholder="🔍 Cerca utente..." style="padding:0.38rem 0.75rem;font-size:0.85rem;width:180px;">
+            <button class="btn btn-ghost btn-sm" id="btn-export">📥 Esporta Report</button>
+          </div>
+        </div>
         <div style="overflow-x:auto;">
           <table class="atbl">
             <thead>
@@ -384,6 +412,25 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
           <div class="num-chips" id="detail-chips"></div>
           <div class="empty-note hidden" id="detail-empty">Nessun numero acquistato.</div>
         </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-title">📦 Gestione Edizioni</div>
+        <div style="font-family:sans-serif;font-size:0.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.6;">
+          Ogni edizione è uno spazio separato con dati indipendenti (utenti, numeri, log). Utile per organizzare più estrazioni senza cancellare i dati precedenti.
+        </div>
+        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;">
+          <div style="flex:1;min-width:180px;">
+            <label>Edizione attiva</label>
+            <select class="edition-sel" id="edition-sel" style="width:100%;max-width:100%;"></select>
+          </div>
+          <div style="flex:1;min-width:160px;">
+            <label>Nuova edizione (nome)</label>
+            <input id="new-edition-name" type="text" placeholder="es. natale_2026" style="width:100%;">
+          </div>
+          <button class="btn btn-gold btn-sm" id="btn-add-edition" style="white-space:nowrap;">+ Crea</button>
+        </div>
+        <div id="edition-status" style="margin-top:0.85rem;font-family:sans-serif;font-size:0.85rem;"></div>
       </div>
 
       <div class="admin-card">
@@ -521,8 +568,13 @@ const ADMIN_AUTH_EMAIL = 'admin@estrazione-lotteria.it';
 // Inizializzazione Firebase Auth SDK
 firebase.initializeApp(FIREBASE_CONFIG);
 const fbAuth = firebase.auth();
+const fbDb   = firebase.database();    // SDK Realtime DB per listener e transaction
 
-// ═══ STORAGE ABSTRACTION (Firebase Realtime DB via REST) ═══
+// ═══ EDIZIONE CORRENTE ═══
+// Ogni edizione è un nodo separato nel DB (es. "tombola", "tombola_natale_2026", ...)
+let CURRENT_EDITION = 'tombola';
+
+// ═══ STORAGE ABSTRACTION (Firebase Realtime DB — REST per bulk, SDK per transaction) ═══
 const store = (() => {
   async function fbGet(path) {
     const r = await fetch(`${FIREBASE_URL}/${path}.json?auth=${FIREBASE_KEY}`);
@@ -540,8 +592,27 @@ const store = (() => {
     if (!r.ok) throw new Error('Firebase write error: ' + r.status);
   }
   return {
-    async get(key) { return await fbGet('tombola/' + key); },
-    async set(key, val) { await fbSet('tombola/' + key, val); }
+    async get(key) { return await fbGet(CURRENT_EDITION + '/' + key); },
+    async set(key, val) { await fbSet(CURRENT_EDITION + '/' + key, val); },
+    // Transaction atomica su un singolo nodo (usata per acquisto numeri)
+    async transaction(key, updateFn) {
+      const ref = fbDb.ref(CURRENT_EDITION + '/' + key);
+      const result = await ref.transaction(updateFn);
+      return result.committed;
+    },
+    // Legge e iscrive un listener realtime su un nodo; callback(data) chiamata ad ogni cambio
+    onValue(key, cb) {
+      const ref = fbDb.ref(CURRENT_EDITION + '/' + key);
+      ref.on('value', snap => cb(snap.val()));
+      return () => ref.off('value');  // restituisce funzione di cleanup
+    },
+    // Lista nodi radice (per edizioni)
+    async listEditions() {
+      const r = await fetch(`${FIREBASE_URL}.json?auth=${FIREBASE_KEY}&shallow=true`);
+      if (!r.ok) return [];
+      const data = await r.json();
+      return data ? Object.keys(data) : [];
+    }
   };
 })();
 
@@ -674,21 +745,47 @@ function doLogout() {
 
 // ═══ GAME ═══
 async function buyNumber(n) {
-  await loadAll();                          // ricarica TUTTO incluso DEADLINE aggiornato
+  // 1. Ricarica DEADLINE aggiornato
+  await loadAll();
   if (!U.admin && isExpired()) throw new Error('⏰ Scadenza superata — gli acquisti sono chiusi.');
-  const existing = NUMS[n];
-  if (existing) throw new Error('Il numero ' + n + ' è già stato acquistato da ' + existing);
-  const u = USERS[U.user];
-  if (u.credits < 1) throw new Error('Crediti insufficienti');
+
+  const user = U.user;
+
+  // 2. Transaction atomica sul numero: garantisce che se due utenti cliccano
+  //    contemporaneamente, solo il primo riesce. Il secondo riceve un errore chiaro.
+  const committed = await store.transaction('nums/' + n, (currentOwner) => {
+    if (currentOwner !== null && currentOwner !== undefined) {
+      return; // abort transaction — numero già preso
+    }
+    return user;
+  });
+
+  if (!committed) {
+    throw new Error('Il numero ' + n + ' è stato appena acquistato da qualcun altro!');
+  }
+
+  // 3. Scala il credito dell'utente (non atomica, ma il numero è già bloccato)
+  await loadAll();
+  const u = USERS[user];
+  if (!u || u.credits < 1) {
+    // Rollback: rimetti il numero libero
+    await store.set('nums/' + n, null);
+    throw new Error('Crediti insufficienti');
+  }
   u.credits -= 1;
   if (!u.nums) u.nums = [];
   u.nums.push(n);
-  NUMS[n] = U.user;
+  NUMS[n] = user;
   U.credits = u.credits;
   U.nums = u.nums;
   await saveUsers();
-  await saveNums();
-  await addLog('Utente <b>' + U.user + '</b> ha acquistato il numero <b>' + n + '</b>');
+  await addLog('Utente <b>' + user + '</b> ha acquistato il numero <b>' + n + '</b>');
+
+  // 4. Coriandoli 🎉
+  if (typeof confetti === 'function') {
+    confetti({ particleCount: 120, spread: 75, origin: { y: 0.55 },
+      colors: ['#c9921a','#e8b030','#5de895','#f0e4c2','#2d7a4f'] });
+  }
 }
 
 // ═══ SCREENS ═══
@@ -821,6 +918,10 @@ async function renderAdmin() {
   renderDeadlineAdmin();
   renderLog();
   loadEventFields();
+  loadEditions();
+
+  // Re-applica filtro di ricerca se già attivo
+  filterAdminTable();
 }
 
 function showDetail(uname) {
@@ -1010,6 +1111,9 @@ document.getElementById('btn-auth').onclick = async () => {
   try {
     await doLogin(u, p);
     show('app'); renderHeader(); showTab('board'); renderEventTitle();
+    renderCounter();
+    if (U.admin) loadEditions();
+    startRealtimeListeners();
   } catch(e) {
     err.textContent = e.message || String(e); err.classList.remove('hidden');
   }
@@ -1020,7 +1124,10 @@ document.getElementById('btn-auth').onclick = async () => {
   if (el) el.onkeydown = e => { if (e.key === 'Enter') document.getElementById('btn-auth').click(); };
 });
 
-document.getElementById('btn-logout').onclick = doLogout;
+document.getElementById('btn-logout').onclick = () => {
+  stopRealtimeListeners();
+  doLogout();
+};
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = () => showTab(btn.dataset.tab);
@@ -1028,10 +1135,22 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 document.getElementById('btn-refresh').onclick = async () => {
   await loadAll();
-  if (U) { U.credits = USERS[U.user].credits; U.nums = USERS[U.user].nums || []; renderHeader(); }
-  renderBoard();
+  if (U) { U.credits = USERS[U.user]?.credits ?? U.credits; U.nums = USERS[U.user]?.nums || []; renderHeader(); }
+  renderBoard(); renderCounter();
   toast('Tabellone aggiornato', 'ok');
 };
+
+// Export + Search (delegated — elements may not exist if admin is not yet in DOM)
+document.addEventListener('click', e => {
+  if (e.target.id === 'btn-export') exportReport();
+  if (e.target.id === 'btn-add-edition') createEdition(document.getElementById('new-edition-name')?.value || '');
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'admin-search') filterAdminTable();
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'edition-sel') switchEdition(e.target.value);
+});
 
 document.getElementById('btn-cancel').onclick  = closeModal;
 document.getElementById('btn-confirm').onclick = async () => {
@@ -1174,11 +1293,129 @@ document.getElementById('btn-ev-clear').onclick = async () => {
   toast('Ripristinato — titolo default attivo.', 'ok');
 };
 
-// Auto-refresh board every 20s while on board tab
-setInterval(async () => {
-  const boardVisible = !document.getElementById('page-board').classList.contains('hidden');
-  if (U && boardVisible) { await loadAll(); renderBoard(); }
-}, 20000);
+// ═══ REAL-TIME LISTENERS (sostituisce setInterval) ═══
+let _rtListeners = [];  // cleanup functions
+
+function startRealtimeListeners() {
+  // Rimuove eventuali listener precedenti
+  _rtListeners.forEach(fn => fn());
+  _rtListeners = [];
+
+  // Listener su nums: aggiorna tabellone istantaneamente
+  _rtListeners.push(store.onValue('nums', data => {
+    if (!U) return;
+    if (data) NUMS = data;
+    else { NUMS = {}; for (let i=1;i<=90;i++) NUMS[i]=null; }
+    renderBoard();
+    renderCounter();
+  }));
+
+  // Listener su users: aggiorna crediti dell'utente corrente in tempo reale
+  _rtListeners.push(store.onValue('users', data => {
+    if (!U || !data) return;
+    USERS = data;
+    if (USERS[U.user]) {
+      U.credits = USERS[U.user].credits;
+      U.nums    = USERS[U.user].nums || [];
+      renderHeader();
+    }
+  }));
+
+  // Listener su deadline: aggiorna banner scadenza
+  _rtListeners.push(store.onValue('deadline', data => {
+    DEADLINE = data || null;
+    renderDeadlineBanner();
+    renderBoard();
+  }));
+}
+
+function stopRealtimeListeners() {
+  _rtListeners.forEach(fn => fn());
+  _rtListeners = [];
+}
+
+// ═══ CONTATORE NUMERI ═══
+function renderCounter() {
+  const avail = Object.values(NUMS).filter(v => v === null).length;
+  const el    = document.getElementById('hdr-counter');
+  const span  = document.getElementById('hdr-avail');
+  if (!el || !span) return;
+  if (U) { el.style.display = ''; span.textContent = avail; }
+  else   { el.style.display = 'none'; }
+}
+
+// ═══ RICERCA UTENTI (admin) ═══
+function filterAdminTable() {
+  const q = (document.getElementById('admin-search')?.value || '').toLowerCase();
+  document.querySelectorAll('#admin-tbody tr').forEach(tr => {
+    const text = tr.textContent.toLowerCase();
+    tr.style.display = (!q || text.includes(q)) ? '' : 'none';
+  });
+}
+
+// ═══ EXPORT REPORT ═══
+function exportReport() {
+  const rows = [['Username', 'Crediti', 'Numeri acquistati', 'Elenco numeri']];
+  Object.entries(USERS).filter(([,d]) => !d.admin).forEach(([uname, data]) => {
+    rows.push([
+      uname,
+      data.credits,
+      (data.nums || []).length,
+      (data.nums || []).slice().sort((a,b)=>a-b).join(', ')
+    ]);
+  });
+  // Aggiunge riga riepilogo
+  rows.push([]);
+  rows.push(['Edizione', CURRENT_EDITION, 'Data report', new Date().toLocaleString('it-IT')]);
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Report');
+  XLSX.writeFile(wb, 'report_' + CURRENT_EDITION + '_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  toast('Report esportato!', 'ok');
+}
+
+// ═══ GESTIONE EDIZIONI ═══
+async function loadEditions() {
+  const sel = document.getElementById('edition-sel');
+  if (!sel) return;
+  let editions = [];
+  try { editions = await store.listEditions(); } catch {}
+  if (!editions.includes('tombola')) editions.unshift('tombola');
+  editions = [...new Set(editions)].sort();
+  sel.innerHTML = editions.map(e =>
+    `<option value="${e}" ${e === CURRENT_EDITION ? 'selected' : ''}>${e}</option>`
+  ).join('');
+  const st = document.getElementById('edition-status');
+  if (st) st.innerHTML = `<span style="color:var(--mine-text);">🟢 Edizione attiva: <strong>${CURRENT_EDITION}</strong></span>`;
+}
+
+async function switchEdition(name) {
+  stopRealtimeListeners();
+  CURRENT_EDITION = name;
+  await loadAll();
+  startRealtimeListeners();
+  renderBoard();
+  renderHeader();
+  renderCounter();
+  loadEditions();
+  toast('Edizione cambiata: ' + name, 'ok');
+}
+
+async function createEdition(name) {
+  if (!name.trim()) { toast('Inserisci un nome per la nuova edizione.', 'err'); return; }
+  const safe = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  // Inizializza la nuova edizione con struttura base
+  const r = await fetch(`${FIREBASE_URL}/${safe}/nums.json?auth=${FIREBASE_KEY}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(Object.fromEntries(Array.from({length:90},(_,i)=>[i+1,null])))
+  });
+  if (!r.ok) { toast('Errore nella creazione dell\'edizione.', 'err'); return; }
+  document.getElementById('new-edition-name').value = '';
+  await switchEdition(safe);
+  await addLog('Admin ha creato la nuova edizione: <b>' + safe + '</b>');
+  toast('Edizione "' + safe + '" creata e attivata!', 'ok');
+}
 
 // ═══ TITOLO EVENTO DINAMICO ═══
 function renderEventTitle() {
