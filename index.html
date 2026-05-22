@@ -419,18 +419,63 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
         <div style="font-family:sans-serif;font-size:0.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.6;">
           Ogni edizione è uno spazio separato con dati indipendenti (utenti, numeri, log). Utile per organizzare più estrazioni senza cancellare i dati precedenti.
         </div>
-        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;">
+
+        <!-- Riga 1: selezione edizione attiva + elimina -->
+        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:0.9rem;">
           <div style="flex:1;min-width:180px;">
             <label>Edizione attiva</label>
             <select class="edition-sel" id="edition-sel" style="width:100%;max-width:100%;"></select>
           </div>
+          <button class="btn btn-red btn-sm" id="btn-del-edition" style="white-space:nowrap;" title="Elimina edizione selezionata (non quella corrente)">🗑 Elimina</button>
+        </div>
+
+        <!-- Riga 2: crea nuova edizione -->
+        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:0.9rem;">
           <div style="flex:1;min-width:160px;">
             <label>Nuova edizione (nome)</label>
             <input id="new-edition-name" type="text" placeholder="es. natale_2026" style="width:100%;">
           </div>
-          <button class="btn btn-gold btn-sm" id="btn-add-edition" style="white-space:nowrap;">+ Crea</button>
+          <button class="btn btn-gold btn-sm" id="btn-add-edition" style="white-space:nowrap;">+ Crea vuota</button>
         </div>
-        <div id="edition-status" style="margin-top:0.85rem;font-family:sans-serif;font-size:0.85rem;"></div>
+
+        <!-- Riga 3: clona edizione -->
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:0.9rem;">
+          <div style="font-family:sans-serif;font-size:0.82rem;color:var(--gold);margin-bottom:0.7rem;font-weight:600;">📋 CLONA EDIZIONE</div>
+          <div style="font-family:sans-serif;font-size:0.82rem;color:var(--muted);margin-bottom:0.75rem;line-height:1.5;">
+            Copia tutto o parte di un'edizione esistente in una nuova. Scegli cosa copiare.
+          </div>
+          <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:0.75rem;">
+            <div style="flex:1;min-width:150px;">
+              <label>Edizione sorgente</label>
+              <select class="edition-sel" id="clone-src-sel" style="width:100%;"></select>
+            </div>
+            <div style="flex:1;min-width:150px;">
+              <label>Nome nuova edizione</label>
+              <input id="clone-dest-name" type="text" placeholder="es. ferragosto_2026_copia" style="width:100%;">
+            </div>
+          </div>
+          <div style="font-family:sans-serif;font-size:0.82rem;color:var(--muted);margin-bottom:0.5rem;">Cosa copiare:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.6rem;margin-bottom:0.85rem;">
+            <label style="display:flex;align-items:center;gap:0.4rem;font-family:sans-serif;font-size:0.82rem;color:var(--cream);text-transform:none;letter-spacing:0;margin:0;cursor:pointer;">
+              <input type="checkbox" id="clone-opt-users" checked> Utenti (username + password + crediti)
+            </label>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-family:sans-serif;font-size:0.82rem;color:var(--cream);text-transform:none;letter-spacing:0;margin:0;cursor:pointer;">
+              <input type="checkbox" id="clone-opt-nums"> Numeri acquistati
+            </label>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-family:sans-serif;font-size:0.82rem;color:var(--cream);text-transform:none;letter-spacing:0;margin:0;cursor:pointer;">
+              <input type="checkbox" id="clone-opt-event" checked> Titolo / nome evento / descrizione
+            </label>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-family:sans-serif;font-size:0.82rem;color:var(--cream);text-transform:none;letter-spacing:0;margin:0;cursor:pointer;">
+              <input type="checkbox" id="clone-opt-deadline"> Scadenza acquisti
+            </label>
+          </div>
+          <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+            <button class="btn btn-gold btn-sm" id="btn-clone-edition">📋 Clona</button>
+            <span id="clone-status" style="font-family:sans-serif;font-size:0.82rem;color:var(--muted);"></span>
+          </div>
+        </div>
+
+        <div id="edition-status" style="margin-top:0.5rem;font-family:sans-serif;font-size:0.85rem;"></div>
       </div>
 
       <div class="admin-card">
@@ -538,6 +583,33 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
   </div>
 </div>
 
+<!-- ═══════════ DELETE EDITION MODAL ═══════════ -->
+<div id="modal-del-edition" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div style="font-size:1.4rem;margin-bottom:0.5rem;">⚠️</div>
+    <div style="font-family:sans-serif;font-size:1rem;font-weight:600;color:#f09090;margin-bottom:0.75rem;">Elimina Edizione</div>
+    <div class="modal-info" id="modal-del-edition-body" style="line-height:1.6;">—</div>
+    <div class="modal-info" style="margin-top:0.5rem;color:#c07050;font-size:0.83rem;">Tutti i dati (utenti, numeri, log) saranno eliminati definitivamente. Questa azione è irreversibile.</div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" id="btn-del-edition-cancel">Annulla</button>
+      <button class="btn btn-red" id="btn-del-edition-confirm">Elimina definitivamente</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ CLONE EDITION MODAL ═══════════ -->
+<div id="modal-clone-edition" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:400px;">
+    <div style="font-size:1.4rem;margin-bottom:0.5rem;">📋</div>
+    <div style="font-family:sans-serif;font-size:1rem;font-weight:600;color:var(--gold);margin-bottom:0.75rem;">Conferma Clonazione</div>
+    <div class="modal-info" id="modal-clone-body" style="line-height:1.7;text-align:left;">—</div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" id="btn-clone-cancel">Annulla</button>
+      <button class="btn btn-gold" id="btn-clone-confirm">Clona</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -572,8 +644,7 @@ const fbDb   = firebase.database();    // SDK Realtime DB per listener e transac
 
 // ═══ EDIZIONE CORRENTE ═══
 // Ogni edizione è un nodo separato nel DB (es. "tombola", "tombola_natale_2026", ...)
-// Viene persistita in localStorage così sopravvive al logout/login
-let CURRENT_EDITION = localStorage.getItem('tombola_edition') || 'tombola';
+let CURRENT_EDITION = 'tombola';
 
 // ═══ STORAGE ABSTRACTION (Firebase Realtime DB — REST per bulk, SDK per transaction) ═══
 const store = (() => {
@@ -607,23 +678,12 @@ const store = (() => {
       ref.on('value', snap => cb(snap.val()));
       return () => ref.off('value');  // restituisce funzione di cleanup
     },
-    // Lista edizioni dal nodo registro dedicato (sempre leggibile)
+    // Lista nodi radice (per edizioni)
     async listEditions() {
-      try {
-        const r = await fetch(`${FIREBASE_URL}/_editions.json?auth=${FIREBASE_KEY}`);
-        if (!r.ok) return ['tombola'];
-        const data = await r.json();
-        if (!data) return ['tombola'];
-        // _editions è un oggetto { tombola: true, ferragosto_2026: true, ... }
-        return Object.keys(data);
-      } catch { return ['tombola']; }
-    },
-    async registerEdition(name) {
-      await fetch(`${FIREBASE_URL}/_editions/${name}.json?auth=${FIREBASE_KEY}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(true)
-      });
+      const r = await fetch(`${FIREBASE_URL}.json?auth=${FIREBASE_KEY}&shallow=true`);
+      if (!r.ok) return [];
+      const data = await r.json();
+      return data ? Object.keys(data) : [];
     }
   };
 })();
@@ -922,26 +982,26 @@ async function renderAdmin() {
   const players = Object.entries(USERS).filter(([, d]) => !d.admin);
   if (!players.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);font-style:italic;">Nessun utente ancora.</td></tr>';
-  } else {
-    players.forEach(([uname, data]) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td style="font-weight:600;">${uname}</td>
-        <td style="font-family:monospace;color:var(--muted);font-size:0.85rem;">${data.pw}</td>
-        <td style="color:var(--gold);font-weight:700;">${data.credits}</td>
-        <td>${(data.nums || []).length}</td>
-        <td>
-          <div class="cr-row">
-            <input type="number" min="1" value="5" id="ci-${uname}" style="width:58px;text-align:center;">
-            <button class="btn btn-ghost btn-sm" onclick="addCredits('${uname}')">+</button>
-          </div>
-        </td>
-        <td><button class="btn btn-red btn-sm" onclick="zeroCredits('${uname}')">Azzera</button></td>
-        <td><button class="btn btn-ghost btn-sm" onclick="showDetail('${uname}')">Vedi</button></td>
-        <td><button class="btn btn-red btn-sm" onclick="openDeleteModal('${uname}')">Elimina</button></td>`;
-      tbody.appendChild(tr);
-    });
+    return;
   }
+  players.forEach(([uname, data]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:600;">${uname}</td>
+      <td style="font-family:monospace;color:var(--muted);font-size:0.85rem;">${data.pw}</td>
+      <td style="color:var(--gold);font-weight:700;">${data.credits}</td>
+      <td>${(data.nums || []).length}</td>
+      <td>
+        <div class="cr-row">
+          <input type="number" min="1" value="5" id="ci-${uname}" style="width:58px;text-align:center;">
+          <button class="btn btn-ghost btn-sm" onclick="addCredits('${uname}')">+</button>
+        </div>
+      </td>
+      <td><button class="btn btn-red btn-sm" onclick="zeroCredits('${uname}')">Azzera</button></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="showDetail('${uname}')">Vedi</button></td>
+      <td><button class="btn btn-red btn-sm" onclick="openDeleteModal('${uname}')">Elimina</button></td>`;
+    tbody.appendChild(tr);
+  });
   renderDeadlineAdmin();
   renderLog();
   loadEventFields();
@@ -1171,6 +1231,12 @@ document.getElementById('btn-refresh').onclick = async () => {
 document.addEventListener('click', e => {
   if (e.target.id === 'btn-export') exportReport();
   if (e.target.id === 'btn-add-edition') createEdition(document.getElementById('new-edition-name')?.value || '');
+  if (e.target.id === 'btn-del-edition') openDeleteEditionModal();
+  if (e.target.id === 'btn-del-edition-cancel') closeDeleteEditionModal();
+  if (e.target.id === 'btn-del-edition-confirm') confirmDeleteEdition();
+  if (e.target.id === 'btn-clone-edition') openCloneModal();
+  if (e.target.id === 'btn-clone-cancel') closeCloneModal();
+  if (e.target.id === 'btn-clone-confirm') confirmCloneEdition();
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'admin-search') filterAdminTable();
@@ -1421,7 +1487,6 @@ async function loadEditions() {
 async function switchEdition(name) {
   stopRealtimeListeners();
   CURRENT_EDITION = name;
-  localStorage.setItem('tombola_edition', name);
   await loadAll();
   startRealtimeListeners();
   renderBoard();
@@ -1433,25 +1498,16 @@ async function switchEdition(name) {
 
 async function createEdition(name) {
   if (!name.trim()) { toast('Inserisci un nome per la nuova edizione.', 'err'); return; }
-  const safe = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^_+|_+$/g, '');
-  if (!safe) { toast('Nome non valido — usa lettere, numeri o underscore.', 'err'); return; }
+  const safe = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  // Inizializza la nuova edizione creando solo il nodo users con l'admin
+  // (il nodo nums viene creato automaticamente al primo acquisto)
   const adminEntry = { admin: true, credits: 999, nums: [] };
   const r = await fetch(`${FIREBASE_URL}/${safe}/users.json?auth=${FIREBASE_KEY}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ admin: adminEntry })
   });
-  if (!r.ok) {
-    const status = r.status;
-    if (status === 401 || status === 403) {
-      toast('Permesso negato (403) — aggiorna le Security Rules di Firebase per permettere le edizioni multiple.', 'err');
-    } else {
-      toast('Errore nella creazione dell\'edizione (HTTP ' + status + ').', 'err');
-    }
-    return;
-  }
-  // Registra nel nodo _editions
-  await store.registerEdition(safe);
+  if (!r.ok) { toast('Errore nella creazione dell\'edizione.', 'err'); return; }
   document.getElementById('new-edition-name').value = '';
   await switchEdition(safe);
   await addLog('Admin ha creato la nuova edizione: <b>' + safe + '</b>');
@@ -1681,19 +1737,6 @@ document.getElementById('btn-import-confirm').onclick = async () => {
         '</div>';
       return;
     }
-    // Registra automaticamente tombola e l'edizione corrente nel registro (idempotente)
-    try {
-      await store.registerEdition('tombola');
-      if (CURRENT_EDITION !== 'tombola') await store.registerEdition(CURRENT_EDITION);
-    } catch {}
-    // Valida l'edizione salvata in localStorage: se non esiste su Firebase, ricade su 'tombola'
-    try {
-      const editions = await store.listEditions();
-      if (editions.length && !editions.includes(CURRENT_EDITION)) {
-        CURRENT_EDITION = 'tombola';
-        localStorage.setItem('tombola_edition', 'tombola');
-      }
-    } catch {}
     await loadAll();
     renderEventTitle(); show('login');
   } catch(e) {
