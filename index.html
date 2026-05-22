@@ -1420,16 +1420,23 @@ async function switchEdition(name) {
 
 async function createEdition(name) {
   if (!name.trim()) { toast('Inserisci un nome per la nuova edizione.', 'err'); return; }
-  const safe = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
-  // Inizializza la nuova edizione creando solo il nodo users con l'admin
-  // (il nodo nums viene creato automaticamente al primo acquisto)
+  const safe = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+  if (!safe) { toast('Nome non valido — usa lettere, numeri o underscore.', 'err'); return; }
   const adminEntry = { admin: true, credits: 999, nums: [] };
   const r = await fetch(`${FIREBASE_URL}/${safe}/users.json?auth=${FIREBASE_KEY}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ admin: adminEntry })
   });
-  if (!r.ok) { toast('Errore nella creazione dell\'edizione.', 'err'); return; }
+  if (!r.ok) {
+    const status = r.status;
+    if (status === 401 || status === 403) {
+      toast('Permesso negato (403) — aggiorna le Security Rules di Firebase per permettere le edizioni multiple.', 'err');
+    } else {
+      toast('Errore nella creazione dell\'edizione (HTTP ' + status + ').', 'err');
+    }
+    return;
+  }
   document.getElementById('new-edition-name').value = '';
   await switchEdition(safe);
   await addLog('Admin ha creato la nuova edizione: <b>' + safe + '</b>');
