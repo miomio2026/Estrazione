@@ -646,11 +646,12 @@ async function loadAll() {
     USERS['admin'].admin = true;
   }
   try {
-    NUMS = await store.get(SK.nums);
+    const numsData = await store.get(SK.nums);
+    // Firebase può restituire solo le chiavi non-null (numeri occupati)
+    NUMS = numsData || {};
   } catch {
+    // Nodo non esiste ancora — edizione nuova, tutti i numeri liberi
     NUMS = {};
-    for (let i = 1; i <= 90; i++) NUMS[i] = null;
-    await store.set(SK.nums, NUMS);
   }
   try {
     LOG = await store.get(SK.log);
@@ -674,7 +675,20 @@ async function loadAll() {
 }
 
 async function saveUsers() { await store.set(SK.users, USERS); }
-async function saveNums()  { await store.set(SK.nums, NUMS); }
+async function saveNums() {
+  // Firebase ignora i valori null — salviamo solo i numeri effettivamente occupati
+  const toSave = {};
+  for (let i = 1; i <= 90; i++) {
+    if (NUMS[i]) toSave[i] = NUMS[i];
+  }
+  if (Object.keys(toSave).length > 0) {
+    await store.set(SK.nums, toSave);
+  } else {
+    // Tutti i numeri liberi: elimina il nodo nums (DELETE via REST)
+    await fetch(`${FIREBASE_URL}/${CURRENT_EDITION}/nums.json?auth=${FIREBASE_KEY}`,
+      { method: 'DELETE' }).catch(() => {});
+  }
+}
 async function saveLog()   { await store.set(SK.log, LOG); }
 async function saveDeadline() {
   if (DEADLINE) await store.set(SK.deadline, DEADLINE);
@@ -768,8 +782,9 @@ async function buyNumber(n) {
   await loadAll();
   const u = USERS[user];
   if (!u || u.credits < 1) {
-    // Rollback: rimetti il numero libero
-    await store.set('nums/' + n, null);
+    // Rollback: libera il numero (DELETE — Firebase non accetta null via set)
+    await fetch(`${FIREBASE_URL}/${CURRENT_EDITION}/nums/${n}.json?auth=${FIREBASE_KEY}`,
+      { method: 'DELETE' }).catch(() => {});
     throw new Error('Crediti insufficienti');
   }
   u.credits -= 1;
@@ -1085,7 +1100,7 @@ async function confirmDelete() {
   await loadAll();
   // Free all numbers owned by this user
   const nums = USERS[uname].nums || [];
-  nums.forEach(n => { if (NUMS[n] === uname) NUMS[n] = null; });
+  nums.forEach(n => { if (NUMS[n] === uname) delete NUMS[n]; });
   delete USERS[uname];
   await saveUsers();
   await saveNums();
@@ -1180,7 +1195,7 @@ document.getElementById('btn-adm-confirm').onclick = async () => {
       USERS[owner].credits += 1;
       USERS[owner].nums = (USERS[owner].nums || []).filter(x => x !== n);
     }
-    NUMS[n] = null;
+    delete NUMS[n];  // rimuoviamo la chiave — null non viene salvato da Firebase
     await saveUsers(); await saveNums();
     await addLog('Admin ha liberato il numero <b>' + n + '</b>' + (owner ? ' (credito restituito a <b>' + owner + '</b>)' : ''));
     renderBoard();
@@ -1304,8 +1319,8 @@ function startRealtimeListeners() {
   // Listener su nums: aggiorna tabellone istantaneamente
   _rtListeners.push(store.onValue('nums', data => {
     if (!U) return;
-    if (data) NUMS = data;
-    else { NUMS = {}; for (let i=1;i<=90;i++) NUMS[i]=null; }
+    // data contiene solo i numeri occupati (Firebase non salva null)
+    NUMS = data || {};
     renderBoard();
     renderCounter();
   }));
@@ -1355,10 +1370,11 @@ function filterAdminTable() {
 
 // ═══ EXPORT REPORT ═══
 function exportReport() {
-  const rows = [['Username', 'Crediti', 'Numeri acquistati', 'Elenco numeri']];
+  const rows = [['Username', 'Password', 'Crediti', 'Numeri acquistati', 'Elenco numeri']];
   Object.entries(USERS).filter(([,d]) => !d.admin).forEach(([uname, data]) => {
     rows.push([
       uname,
+      data.pw || '',
       data.credits,
       (data.nums || []).length,
       (data.nums || []).slice().sort((a,b)=>a-b).join(', ')
@@ -1405,10 +1421,13 @@ async function switchEdition(name) {
 async function createEdition(name) {
   if (!name.trim()) { toast('Inserisci un nome per la nuova edizione.', 'err'); return; }
   const safe = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
-  // Inizializza la nuova edizione con struttura base
-  const r = await fetch(`${FIREBASE_URL}/${safe}/nums.json?auth=${FIREBASE_KEY}`, {
-    method: 'PUT', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(Object.fromEntries(Array.from({length:90},(_,i)=>[i+1,null])))
+  // Inizializza la nuova edizione creando solo il nodo users con l'admin
+  // (il nodo nums viene creato automaticamente al primo acquisto)
+  const adminEntry = { admin: true, credits: 999, nums: [] };
+  const r = await fetch(`${FIREBASE_URL}/${safe}/users.json?auth=${FIREBASE_KEY}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ admin: adminEntry })
   });
   if (!r.ok) { toast('Errore nella creazione dell\'edizione.', 'err'); return; }
   document.getElementById('new-edition-name').value = '';
