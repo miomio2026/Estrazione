@@ -572,7 +572,8 @@ const fbDb   = firebase.database();    // SDK Realtime DB per listener e transac
 
 // ═══ EDIZIONE CORRENTE ═══
 // Ogni edizione è un nodo separato nel DB (es. "tombola", "tombola_natale_2026", ...)
-let CURRENT_EDITION = 'tombola';
+// Viene persistita in localStorage così sopravvive al logout/login
+let CURRENT_EDITION = localStorage.getItem('tombola_edition') || 'tombola';
 
 // ═══ STORAGE ABSTRACTION (Firebase Realtime DB — REST per bulk, SDK per transaction) ═══
 const store = (() => {
@@ -910,26 +911,26 @@ async function renderAdmin() {
   const players = Object.entries(USERS).filter(([, d]) => !d.admin);
   if (!players.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);font-style:italic;">Nessun utente ancora.</td></tr>';
-    return;
+  } else {
+    players.forEach(([uname, data]) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="font-weight:600;">${uname}</td>
+        <td style="font-family:monospace;color:var(--muted);font-size:0.85rem;">${data.pw}</td>
+        <td style="color:var(--gold);font-weight:700;">${data.credits}</td>
+        <td>${(data.nums || []).length}</td>
+        <td>
+          <div class="cr-row">
+            <input type="number" min="1" value="5" id="ci-${uname}" style="width:58px;text-align:center;">
+            <button class="btn btn-ghost btn-sm" onclick="addCredits('${uname}')">+</button>
+          </div>
+        </td>
+        <td><button class="btn btn-red btn-sm" onclick="zeroCredits('${uname}')">Azzera</button></td>
+        <td><button class="btn btn-ghost btn-sm" onclick="showDetail('${uname}')">Vedi</button></td>
+        <td><button class="btn btn-red btn-sm" onclick="openDeleteModal('${uname}')">Elimina</button></td>`;
+      tbody.appendChild(tr);
+    });
   }
-  players.forEach(([uname, data]) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td style="font-weight:600;">${uname}</td>
-      <td style="font-family:monospace;color:var(--muted);font-size:0.85rem;">${data.pw}</td>
-      <td style="color:var(--gold);font-weight:700;">${data.credits}</td>
-      <td>${(data.nums || []).length}</td>
-      <td>
-        <div class="cr-row">
-          <input type="number" min="1" value="5" id="ci-${uname}" style="width:58px;text-align:center;">
-          <button class="btn btn-ghost btn-sm" onclick="addCredits('${uname}')">+</button>
-        </div>
-      </td>
-      <td><button class="btn btn-red btn-sm" onclick="zeroCredits('${uname}')">Azzera</button></td>
-      <td><button class="btn btn-ghost btn-sm" onclick="showDetail('${uname}')">Vedi</button></td>
-      <td><button class="btn btn-red btn-sm" onclick="openDeleteModal('${uname}')">Elimina</button></td>`;
-    tbody.appendChild(tr);
-  });
   renderDeadlineAdmin();
   renderLog();
   loadEventFields();
@@ -1409,6 +1410,7 @@ async function loadEditions() {
 async function switchEdition(name) {
   stopRealtimeListeners();
   CURRENT_EDITION = name;
+  localStorage.setItem('tombola_edition', name);
   await loadAll();
   startRealtimeListeners();
   renderBoard();
@@ -1666,6 +1668,14 @@ document.getElementById('btn-import-confirm').onclick = async () => {
         '</div>';
       return;
     }
+    // Valida l'edizione salvata in localStorage: se non esiste su Firebase, ricade su 'tombola'
+    try {
+      const editions = await store.listEditions();
+      if (editions.length && !editions.includes(CURRENT_EDITION)) {
+        CURRENT_EDITION = 'tombola';
+        localStorage.setItem('tombola_edition', 'tombola');
+      }
+    } catch {}
     await loadAll();
     renderEventTitle(); show('login');
   } catch(e) {
