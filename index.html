@@ -1002,12 +1002,21 @@ function showTab(tab) {
   if (tab === 'admin' && (!U || !U.admin)) {
     tab = 'board';
   }
+  
   ['board','mine','admin'].forEach(t => {
     document.getElementById('page-' + t).classList.toggle('hidden', t !== tab);
     const btn = document.querySelector('.tab-btn[data-tab="' + t + '"]');
     if (btn) btn.classList.toggle('on', t === tab);
   });
-  if (tab === 'board') renderBoard();
+  
+  if (tab === 'board') {
+    renderBoard();
+    renderCounter();
+    // ★ NUOVO: Se c'è un vincitore, mostra overlay quando entri in Board
+    if (WINNER?.num) {
+      showWinnerOverlay(false, true); // force = true, mostra sempre
+    }
+  }
   if (tab === 'mine')  renderMine();
   if (tab === 'admin') renderAdmin();
 }
@@ -1027,11 +1036,7 @@ function renderHeader() {
 function renderBoard() {
   renderDeadlineBanner();
   renderWinnerBanner();
-  // ★ NUOVO: Se c'è un vincitore e siamo nel tabellone, mostra overlay
-  if (WINNER?.num) {
-    showWinnerOverlay(false); // false = non da listener, ma da navigazione diretta
-  }
-
+ 
   const expired    = !U.admin && isExpired();
   const winnerNum  = WINNER?.num;
   const g = document.getElementById('board-grid');
@@ -1608,16 +1613,32 @@ function startRealtimeListeners() {
     renderBoard();
   }));
 
-  // Listener su winner: mostra overlay a tutti in tempo reale
-  _rtListeners.push(store.onValue('winner', data => {
-    const prevNum = WINNER?.num;
-    WINNER = data || null;
-    renderBoard();
-    if (WINNER?.num && WINNER.num !== prevNum) {
-      showWinnerOverlay(true); // fromListener=true → rispetta sessionStorage
-    }
-  }));
-}
+  // Listener su winner: gestisce aggiornamenti in tempo reale
+_rtListeners.push(store.onValue('winner', data => {
+  const hadWinnerBefore = !!WINNER?.num;
+  const prevNum = WINNER?.num || null;
+  
+  WINNER = data || null;
+  
+  // Aggiorna sempre il tabellone (numero dorato, banner piccolo)
+  renderBoard();
+  renderWinnerBanner();
+  
+  // Se c'è un NUOVO vincitore (diverso dal precedente o prima non c'era)
+  if (WINNER?.num && WINNER.num !== prevNum) {
+    showWinnerOverlay(true);
+  }
+  
+  // Se il vincitore è stato rimosso (reset da altro dispositivo)
+  if (!WINNER?.num && hadWinnerBefore) {
+    document.getElementById('winner-overlay').classList.add('hidden');
+    // Pulisci sessionStorage per permettere nuovo vincitore
+    const prefix = 'winner_shown_' + CURRENT_EDITION;
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.startsWith(prefix)) sessionStorage.removeItem(key);
+    });
+  }
+}));
 
 function stopRealtimeListeners() {
   _rtListeners.forEach(fn => fn());
@@ -1639,47 +1660,55 @@ function renderCounter() {
 // ═══ ANNUNCIO VINCITORE ═══
 async function announceWinner() {
   const n = parseInt(document.getElementById('winner-input')?.value);
-  if (!n || n < 1 || n > 90) { toast('Inserisci un numero valido tra 1 e 90.', 'err'); return; }
+  if (!n || n < 1 || n > 90) { 
+    toast('Inserisci un numero valido tra 1 e 90.', 'err'); 
+    return; 
+  }
+  
+  // Ricarica stato fresco
   await loadAll();
+  
   const owner = NUMS[n] || null;
-  WINNER = { num: n, owner: owner || 'Nessun proprietario' };
-  await store.set(SK.winner, WINNER);
+  const winnerData = { num: n, owner: owner || 'Nessun proprietario' };
+  
+  // NON settare WINNER localmente! Lascia che il listener lo gestisca
+  // WINNER = winnerData;  ← RIMOSSO!
+  
+  // Scrivi su Firebase — il listener si occuperà di aggiornare WINNER
+  await store.set(SK.winner, winnerData);
+  
   await addLog('Admin ha annunciato il numero vincente: <b>' + n + '</b>' +
     (owner ? ' — vinto da <b>' + owner + '</b>' : ' (numero non assegnato)'));
-  renderBoard(); // aggiorna il tabellone con il numero evidenziato
+  
+  // Aggiorna UI admin
   renderWinnerAdminStatus();
-  // NON mostriamo più l'overlay qui — apparirà quando l'utente entra nel tabellone
+  renderBoard(); // per aggiornare numero dorato in background
+  
   toast('🏆 Vincitore annunciato! Gli utenti vedranno il popup nel tabellone.', 'ok');
 }
 
-async function resetWinner() {
-  WINNER = null;
-  try { await fetch(`${FIREBASE_URL}/${CURRENT_EDITION}/winner.json?auth=${FIREBASE_KEY}`, { method: 'DELETE' }); } catch {}
-  // Pulisci sessionStorage per permettere al nuovo vincitore di apparire
-  Object.keys(sessionStorage).forEach(key => {
-    if (key.startsWith('winner_shown_')) sessionStorage.removeItem(key);
-  });
-  await addLog('Admin ha reimpostato il vincitore (annullato).');
-  renderBoard();
-  renderWinnerAdminStatus();
-  document.getElementById('winner-overlay').classList.add('hidden');
-  toast('Vincitore reimpostato.', 'ok');
-}
+async function res
 
-function showWinnerOverlay(fromListener = false) {
+function showWinnerOverlay(fromListener = false, force = false) {
   if (!WINNER?.num) return;
   
-  // Mostra l'overlay SOLO se siamo nella pagina Board
+  // Mostra SOLO se siamo nella pagina Board
   const boardPage = document.getElementById('page-board');
   const isBoardVisible = boardPage && !boardPage.classList.contains('hidden');
   if (!isBoardVisible) return;
 
-  // Evita di rimostrarlo ad ogni renderBoard: usa sessionStorage
+  // Gestione sessionStorage
   const key = 'winner_shown_' + CURRENT_EDITION + '_' + WINNER.num;
-  if (fromListener && sessionStorage.getItem(key)) return;
+  
+  if (!force) {
+    // Se dal listener e già visto, non mostrare di nuovo
+    if (fromListener && sessionStorage.getItem(key)) return;
+  }
+  
+  // Segna come visto
   sessionStorage.setItem(key, '1');
 
-  // ★ NUOVO: Abbrevia il nome a 3 lettere per privacy
+  // Abbrevia nome per privacy
   const rawOwner = WINNER.owner || '—';
   const displayOwner = (rawOwner === 'Nessun proprietario' || rawOwner === '—') 
     ? rawOwner 
@@ -1692,9 +1721,10 @@ function showWinnerOverlay(fromListener = false) {
     rawOwner && rawOwner !== 'Nessun proprietario' && rawOwner !== '—'
       ? 'ha vinto l\'estrazione! 🎉'
       : 'Numero estratto — nessun partecipante aveva questo numero.';
+  
   ov.classList.remove('hidden');
 
-  // Confetti massicci
+  // Confetti
   if (typeof confetti === 'function') {
     const end = Date.now() + 4000;
     const colors = ['#c9921a','#e8b030','#f0d040','#5de895','#f0e4c2','#ffffff'];
