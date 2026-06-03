@@ -1027,6 +1027,11 @@ function renderHeader() {
 function renderBoard() {
   renderDeadlineBanner();
   renderWinnerBanner();
+  // ★ NUOVO: Se c'è un vincitore e siamo nel tabellone, mostra overlay
+  if (WINNER?.num) {
+    showWinnerOverlay(false); // false = non da listener, ma da navigazione diretta
+  }
+
   const expired    = !U.admin && isExpired();
   const winnerNum  = WINNER?.num;
   const g = document.getElementById('board-grid');
@@ -1626,15 +1631,19 @@ async function announceWinner() {
   await store.set(SK.winner, WINNER);
   await addLog('Admin ha annunciato il numero vincente: <b>' + n + '</b>' +
     (owner ? ' — vinto da <b>' + owner + '</b>' : ' (numero non assegnato)'));
-  renderBoard();
+  renderBoard(); // aggiorna il tabellone con il numero evidenziato
   renderWinnerAdminStatus();
-  showWinnerOverlay();
-  toast('🏆 Vincitore annunciato!', 'ok');
+  // NON mostriamo più l'overlay qui — apparirà quando l'utente entra nel tabellone
+  toast('🏆 Vincitore annunciato! Gli utenti vedranno il popup nel tabellone.', 'ok');
 }
 
 async function resetWinner() {
   WINNER = null;
   try { await fetch(`${FIREBASE_URL}/${CURRENT_EDITION}/winner.json?auth=${FIREBASE_KEY}`, { method: 'DELETE' }); } catch {}
+  // Pulisci sessionStorage per permettere al nuovo vincitore di apparire
+  Object.keys(sessionStorage).forEach(key => {
+    if (key.startsWith('winner_shown_')) sessionStorage.removeItem(key);
+  });
   await addLog('Admin ha reimpostato il vincitore (annullato).');
   renderBoard();
   renderWinnerAdminStatus();
@@ -1644,9 +1653,13 @@ async function resetWinner() {
 
 function showWinnerOverlay(fromListener = false) {
   if (!WINNER?.num) return;
-  // Se viene da listener (altro utente ha annunciato), mostra sempre.
-  // Se viene dall'admin stesso, mostra sempre.
-  // Evita di rimostrarlo ad ogni renderBoard: usa sessionStorage.
+  
+  // ★ NUOVO: Mostra l'overlay SOLO se siamo nella pagina Board
+  const boardPage = document.getElementById('page-board');
+  const isBoardVisible = boardPage && !boardPage.classList.contains('hidden');
+  if (!isBoardVisible) return; // Silenzioso — non mostrare se non in tabellone
+
+  // Evita di rimostrarlo ad ogni renderBoard: usa sessionStorage
   const key = 'winner_shown_' + CURRENT_EDITION + '_' + WINNER.num;
   if (fromListener && sessionStorage.getItem(key)) return;
   sessionStorage.setItem(key, '1');
