@@ -204,6 +204,42 @@ input:focus { border-color: var(--gold); }
 .log-entry { padding: 0.35rem 0.6rem; border-radius: 5px; background: var(--surface2); border-left: 3px solid var(--border2); line-height: 1.5; }
 .log-ts { color: var(--muted); margin-right: 0.75rem; font-size: 0.8rem; }
 
+
+/* ─── WINNER ─── */
+.nc-winner {
+  background: linear-gradient(135deg, #c9921a, #f0c030) !important;
+  border-color: #f0d040 !important; color: #1a0800 !important;
+  font-weight: 900 !important; cursor: default !important;
+  animation: winner-pulse 1s ease-in-out infinite;
+  box-shadow: 0 0 18px rgba(220,160,10,0.8); position: relative; z-index: 1;
+}
+@keyframes winner-pulse {
+  0%,100% { transform: scale(1);    box-shadow: 0 0 14px rgba(220,160,10,0.7); }
+  50%      { transform: scale(1.13); box-shadow: 0 0 28px rgba(220,160,10,1);   }
+}
+.winner-banner {
+  border-radius: 8px; padding: 0.7rem 1.1rem; margin-bottom: 1rem;
+  background: linear-gradient(90deg, #2a1800, #1a0e00);
+  border: 1px solid var(--gold); font-family: sans-serif; font-size: 0.9rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.winner-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.88);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; z-index: 300; text-align: center; padding: 2rem;
+}
+.winner-big-num {
+  font-size: clamp(5rem,18vw,9rem); font-weight: 900; color: var(--gold);
+  line-height: 1; margin-bottom: 0.4rem;
+  text-shadow: 0 0 50px rgba(210,150,10,0.9);
+}
+.winner-name  { font-size: clamp(1.6rem,5vw,2.8rem); color: var(--cream); font-family: Georgia, serif; margin-bottom: 0.5rem; }
+.winner-sub   { font-size: 1rem; color: var(--muted); font-family: sans-serif; margin-bottom: 2rem; }
+/* ─── DISABLED USER ─── */
+.badge-dis  { background:#3a1010; border:1px solid #7a2a2a; color:#f09090; border-radius:12px; padding:0.18rem 0.6rem; font-size:0.76rem; font-family:sans-serif; }
+.badge-act  { background:#0e2d1a; border:1px solid #1a5a35; color:#60c890; border-radius:12px; padding:0.18rem 0.6rem; font-size:0.76rem; font-family:sans-serif; }
+
 /* ─── COUNTER ─── */
 .num-counter {
   display: inline-flex; align-items: center; gap: 0.4rem;
@@ -333,11 +369,16 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
         <button class="btn btn-ghost btn-sm" id="btn-refresh">↻ Aggiorna</button>
       </div>
       <div id="deadline-banner" class="deadline-banner hidden"></div>
+      <div id="winner-banner" class="winner-banner hidden">
+        <span>🏆 <strong>NUMERO VINCENTE: <span id="wb-num">—</span></strong></span>
+        <button class="btn btn-ghost btn-sm" id="btn-wb-close" style="padding:0.2rem 0.6rem;">×</button>
+      </div>
       <div class="grid-90" id="board-grid"></div>
       <div class="legend">
         <div class="legend-item"><div class="ldot ldot-av"></div>Disponibile</div>
         <div class="legend-item"><div class="ldot ldot-mine"></div>Il mio</div>
         <div class="legend-item"><div class="ldot ldot-tk"></div>Acquistato</div>
+        <div class="legend-item" id="legend-winner" style="display:none;"><div class="ldot" style="background:linear-gradient(135deg,#c9921a,#f0c030);border:1px solid #f0d040;"></div>Vincitore</div>
       </div>
     </div>
   </div>
@@ -418,9 +459,11 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
                 <th>Crediti</th>
                 <th>Numeri</th>
                 <th>Aggiungi crediti</th>
-                <th>Azzera crediti</th>
+                <th>Azzera</th>
+                <th>Stato</th>
                 <th>Dettaglio</th>
-                <th>Azioni</th>
+                <th>Modifica</th>
+                <th>Elimina</th>
               </tr>
             </thead>
             <tbody id="admin-tbody"></tbody>
@@ -538,6 +581,22 @@ input[type=datetime-local]:focus { border-color: var(--gold); }
       </div>
 
       <div class="admin-card">
+      <div class="admin-card">
+        <div class="admin-card-title">🏆 Annuncio Vincitore</div>
+        <div style="font-family:sans-serif;font-size:0.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.6;">
+          Inserisci il numero estratto per evidenziarlo sul tabellone e mostrare il vincitore a tutti.
+        </div>
+        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;">
+          <div>
+            <label>Numero vincente (1–90)</label>
+            <input id="winner-input" type="number" min="1" max="90" placeholder="es. 42" style="width:100px;">
+          </div>
+          <button class="btn btn-gold btn-sm" id="btn-announce-winner">🏆 Annuncia vincitore</button>
+          <button class="btn btn-ghost btn-sm" id="btn-reset-winner" style="color:#f09090;border-color:#7a2a2a;">Reimposta</button>
+        </div>
+        <div id="winner-admin-status" style="margin-top:0.85rem;font-family:sans-serif;font-size:0.88rem;"></div>
+      </div>
+
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem;">
           <div class="admin-card-title" style="margin-bottom:0;">Log Attività</div>
           <button class="btn btn-ghost btn-sm" onclick="clearLog()">🗑 Svuota log</button>
@@ -747,9 +806,11 @@ let DEADLINE = null;    // ISO string oppure null = nessuna scadenza
 let EVENT_NAME = null;  // Nome evento/sottotitolo (es. 'Estrazione Lotteria del 07/04/2026')
 let EVENT_DESC = null;  // Descrizione (es. 'Primo numero estratto della ruota Nazionale')
 let SITE_TITLE = null;  // Titolo principale (default: 'ESTRAZIONE LOTTERIA!!!')
+let WINNER     = null;  // { num: 42, owner: 'mario' } oppure null
+let pendingEditUser = null;  // username in editing
 let pendingN = null;
 const DEFAULT_TITLE = 'ESTRAZIONE LOTTERIA!!!';
-const SK = { users: 'users', nums: 'nums', log: 'log', deadline: 'deadline', eventName: 'eventName', eventDesc: 'eventDesc', siteTitle: 'siteTitle' };
+const SK = { users: 'users', nums: 'nums', log: 'log', deadline: 'deadline', eventName: 'eventName', eventDesc: 'eventDesc', siteTitle: 'siteTitle', winner: 'winner' };
 
 // ═══ DATA ═══
 async function loadAll() {
@@ -794,6 +855,9 @@ async function loadAll() {
   try {
     SITE_TITLE = await store.get(SK.siteTitle);
   } catch { SITE_TITLE = null; }
+  try {
+    WINNER = await store.get(SK.winner);
+  } catch { WINNER = null; }
 }
 
 async function saveUsers() { await store.set(SK.users, USERS); }
@@ -868,6 +932,7 @@ async function doLogin(user, pw) {
   // ── UTENTI NORMALI: autenticazione tramite Firebase Realtime DB ──
   const u = USERS[user];
   if (!u) throw new Error('Utente non trovato');
+  if (u.disabled) throw new Error('⛔ Account sospeso. Contatta l\'amministratore.');
   if (u.pw !== pw) throw new Error('Password errata');
   U = { user, ...u };
 }
@@ -961,20 +1026,24 @@ function renderHeader() {
 
 function renderBoard() {
   renderDeadlineBanner();
-  const expired = !U.admin && isExpired();
+  renderWinnerBanner();
+  const expired    = !U.admin && isExpired();
+  const winnerNum  = WINNER?.num;
   const g = document.getElementById('board-grid');
   g.innerHTML = '';
   for (let i = 1; i <= 90; i++) {
     const owner = NUMS[i];
     const mine  = !U.admin && owner === U.user;
     const taken = owner && !mine;
+    const isWin = (i === winnerNum);
     const div   = document.createElement('div');
 
-    if (U.admin) {
+    if (isWin) {
+      div.className = 'nc nc-winner';
+    } else if (U.admin) {
       div.className = 'nc ' + (owner ? 'nc-admin-taken' : 'nc-admin-free');
       div.addEventListener('click', () => adminClickNumber(i));
     } else if (expired) {
-      // scaduto: tutte le celle disabilitate, numeri occupati mostrano proprietario
       div.className = 'nc' + (mine ? ' nc-mine' : taken ? ' nc-taken' : ' nc-closed');
     } else {
       div.className = 'nc' + (mine ? ' nc-mine' : taken ? ' nc-taken' : '');
@@ -982,13 +1051,37 @@ function renderBoard() {
     }
 
     div.textContent = i;
-    if (owner) {
+    if (owner && !isWin) {
       const tag = document.createElement('span');
       tag.className = 'owner-tag';
       tag.textContent = owner.substring(0, 3);
       div.appendChild(tag);
     }
     g.appendChild(div);
+  }
+  // Mostra/nascondi la voce vincitore nella legenda
+  const lw = document.getElementById('legend-winner');
+  if (lw) lw.style.display = winnerNum ? '' : 'none';
+}
+
+function renderWinnerBanner() {
+  const banner = document.getElementById('winner-banner');
+  if (!banner) return;
+  if (!WINNER?.num) { banner.classList.add('hidden'); return; }
+  document.getElementById('wb-num').textContent = WINNER.num;
+  banner.classList.remove('hidden');
+}
+
+function renderWinnerAdminStatus() {
+  const st = document.getElementById('winner-admin-status');
+  if (!st) return;
+  if (WINNER?.num) {
+    st.innerHTML = '🏆 Vincitore annunciato: numero <strong style="color:var(--gold);">' +
+      WINNER.num + '</strong> — <strong>' + (WINNER.owner || 'non assegnato') + '</strong>';
+    const inp = document.getElementById('winner-input');
+    if (inp) inp.value = WINNER.num;
+  } else {
+    st.innerHTML = '<span style="color:var(--muted);">Nessun vincitore annunciato.</span>';
   }
 }
 
@@ -1035,7 +1128,9 @@ async function renderAdmin() {
     return;
   }
   players.forEach(([uname, data]) => {
+    const isDisabled = !!data.disabled;
     const tr = document.createElement('tr');
+    tr.style.opacity = isDisabled ? '0.6' : '1';
     tr.innerHTML = `
       <td style="font-weight:600;">${uname}</td>
       <td style="font-family:monospace;color:var(--muted);font-size:0.85rem;">${data.pw}</td>
@@ -1048,15 +1143,25 @@ async function renderAdmin() {
         </div>
       </td>
       <td><button class="btn btn-red btn-sm" onclick="zeroCredits('${uname}')">Azzera</button></td>
+      <td style="white-space:nowrap;">
+        ${isDisabled
+          ? `<span class="badge-dis">Sospeso</span>`
+          : `<span class="badge-act">Attivo</span>`}
+      </td>
       <td><button class="btn btn-ghost btn-sm" onclick="showDetail('${uname}')">Vedi</button></td>
-      <td><button class="btn btn-red btn-sm" onclick="openDeleteModal('${uname}')">Elimina</button></td>`;
+      <td><button class="btn btn-ghost btn-sm" onclick="openEditModal('${uname}')" title="Modifica utente">✏️</button></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-ghost btn-sm" style="${isDisabled ? 'color:#60c890;border-color:#1a5a35;' : 'color:#f09090;border-color:#7a2a2a;'}"
+          onclick="toggleDisabled('${uname}')">${isDisabled ? 'Riattiva' : 'Sospendi'}</button>
+        <button class="btn btn-red btn-sm" style="margin-left:4px;" onclick="openDeleteModal('${uname}')">🗑</button>
+      </td>`;
     tbody.appendChild(tr);
   });
   renderDeadlineAdmin();
   renderLog();
   loadEventFields();
   loadEditions();
-
+  renderWinnerAdminStatus();
   // Re-applica filtro di ricerca se già attivo
   filterAdminTable();
 }
@@ -1291,6 +1396,14 @@ document.addEventListener('click', e => {
   if (e.target.id === 'btn-clone-edition') openCloneModal();
   if (e.target.id === 'btn-clone-cancel') closeCloneModal();
   if (e.target.id === 'btn-clone-confirm') confirmCloneEdition();
+  // Winner
+  if (e.target.id === 'btn-announce-winner') announceWinner();
+  if (e.target.id === 'btn-reset-winner')    resetWinner();
+  if (e.target.id === 'btn-wb-close')        document.getElementById('winner-banner')?.classList.add('hidden');
+  if (e.target.id === 'btn-wov-close')       document.getElementById('winner-overlay')?.classList.add('hidden');
+  // Edit user
+  if (e.target.id === 'btn-edit-cancel') closeEditModal();
+  if (e.target.id === 'btn-edit-save')   saveEditUser();
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'admin-search') filterAdminTable();
@@ -1474,6 +1587,16 @@ function startRealtimeListeners() {
     renderDeadlineBanner();
     renderBoard();
   }));
+
+  // Listener su winner: mostra overlay a tutti in tempo reale
+  _rtListeners.push(store.onValue('winner', data => {
+    const prevNum = WINNER?.num;
+    WINNER = data || null;
+    renderBoard();
+    if (WINNER?.num && WINNER.num !== prevNum) {
+      showWinnerOverlay(true); // fromListener=true → rispetta sessionStorage
+    }
+  }));
 }
 
 function stopRealtimeListeners() {
@@ -1493,6 +1616,128 @@ function renderCounter() {
 }
 
 // ═══ RICERCA UTENTI (admin) ═══
+// ═══ ANNUNCIO VINCITORE ═══
+async function announceWinner() {
+  const n = parseInt(document.getElementById('winner-input')?.value);
+  if (!n || n < 1 || n > 90) { toast('Inserisci un numero valido tra 1 e 90.', 'err'); return; }
+  await loadAll();
+  const owner = NUMS[n] || null;
+  WINNER = { num: n, owner: owner || 'Nessun proprietario' };
+  await store.set(SK.winner, WINNER);
+  await addLog('Admin ha annunciato il numero vincente: <b>' + n + '</b>' +
+    (owner ? ' — vinto da <b>' + owner + '</b>' : ' (numero non assegnato)'));
+  renderBoard();
+  renderWinnerAdminStatus();
+  showWinnerOverlay();
+  toast('🏆 Vincitore annunciato!', 'ok');
+}
+
+async function resetWinner() {
+  WINNER = null;
+  try { await fetch(`${FIREBASE_URL}/${CURRENT_EDITION}/winner.json?auth=${FIREBASE_KEY}`, { method: 'DELETE' }); } catch {}
+  await addLog('Admin ha reimpostato il vincitore (annullato).');
+  renderBoard();
+  renderWinnerAdminStatus();
+  document.getElementById('winner-overlay').classList.add('hidden');
+  toast('Vincitore reimpostato.', 'ok');
+}
+
+function showWinnerOverlay(fromListener = false) {
+  if (!WINNER?.num) return;
+  // Se viene da listener (altro utente ha annunciato), mostra sempre.
+  // Se viene dall'admin stesso, mostra sempre.
+  // Evita di rimostrarlo ad ogni renderBoard: usa sessionStorage.
+  const key = 'winner_shown_' + CURRENT_EDITION + '_' + WINNER.num;
+  if (fromListener && sessionStorage.getItem(key)) return;
+  sessionStorage.setItem(key, '1');
+
+  const ov = document.getElementById('winner-overlay');
+  document.getElementById('wov-num').textContent   = WINNER.num;
+  document.getElementById('wov-owner').textContent = WINNER.owner || '—';
+  document.getElementById('wov-sub').textContent   =
+    WINNER.owner && WINNER.owner !== 'Nessun proprietario'
+      ? 'ha vinto l\'estrazione! 🎉'
+      : 'Numero estratto — nessun partecipante aveva questo numero.';
+  ov.classList.remove('hidden');
+
+  // Confetti massicci
+  if (typeof confetti === 'function') {
+    const end = Date.now() + 4000;
+    const colors = ['#c9921a','#e8b030','#f0d040','#5de895','#f0e4c2','#ffffff'];
+    (function frame() {
+      confetti({ particleCount: 6, angle: 60, spread: 55, origin: { x: 0 }, colors });
+      confetti({ particleCount: 6, angle: 120, spread: 55, origin: { x: 1 }, colors });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    })();
+  }
+}
+
+// ═══ DISABILITA / ABILITA UTENTE ═══
+async function toggleDisabled(uname) {
+  await loadAll();
+  const u = USERS[uname];
+  if (!u) return;
+  u.disabled = !u.disabled;
+  await saveUsers();
+  await addLog('Admin ha ' + (u.disabled ? '<b style="color:#f09090;">sospeso</b>' : '<b style="color:#60c890;">riattivato</b>') + ' l\'utente <b>' + uname + '</b>');
+  toast(uname + (u.disabled ? ' sospeso.' : ' riattivato.'), 'ok');
+  renderAdmin();
+}
+
+// ═══ MODIFICA UTENTE ═══
+function openEditModal(uname) {
+  pendingEditUser = uname;
+  const data = USERS[uname];
+  document.getElementById('edit-user-current').textContent = 'Stai modificando: ' + uname;
+  document.getElementById('edit-uname').value   = uname;
+  document.getElementById('edit-pw').value      = data?.pw || '';
+  document.getElementById('edit-credits').value = data?.credits ?? 0;
+  document.getElementById('edit-user-err').classList.add('hidden');
+  document.getElementById('modal-edit-user').classList.remove('hidden');
+}
+
+function closeEditModal() {
+  pendingEditUser = null;
+  document.getElementById('modal-edit-user').classList.add('hidden');
+}
+
+async function saveEditUser() {
+  const oldName   = pendingEditUser;
+  const newName   = document.getElementById('edit-uname').value.trim();
+  const newPw     = document.getElementById('edit-pw').value;
+  const newCreds  = parseInt(document.getElementById('edit-credits').value) ?? 0;
+  const errEl     = document.getElementById('edit-user-err');
+
+  if (!newName) { errEl.textContent = 'Il campo username non può essere vuoto.'; errEl.classList.remove('hidden'); return; }
+  if (newName !== oldName && USERS[newName]) { errEl.textContent = 'Username già in uso.'; errEl.classList.remove('hidden'); return; }
+  if (newName !== oldName && newName === 'admin') { errEl.textContent = 'Username riservato.'; errEl.classList.remove('hidden'); return; }
+
+  await loadAll();
+  const userData = { ...USERS[oldName], pw: newPw || USERS[oldName].pw, credits: newCreds };
+
+  if (newName !== oldName) {
+    // Rinomina: crea nuovo key, elimina vecchio
+    USERS[newName] = userData;
+    delete USERS[oldName];
+    // Aggiorna anche NUMS se il vecchio nome era proprietario di numeri
+    for (let i = 1; i <= 90; i++) {
+      if (NUMS[i] === oldName) NUMS[i] = newName;
+    }
+    await saveNums();
+  } else {
+    USERS[oldName] = userData;
+  }
+
+  await saveUsers();
+  await addLog('Admin ha modificato l\'utente <b>' + oldName + '</b>' +
+    (newName !== oldName ? ' → rinominato <b>' + newName + '</b>' : '') +
+    (newPw ? ', password aggiornata' : '') +
+    ', crediti: <b>' + newCreds + '</b>');
+  closeEditModal();
+  toast('Utente aggiornato.', 'ok');
+  renderAdmin();
+}
+
 function filterAdminTable() {
   const q = (document.getElementById('admin-search')?.value || '').toLowerCase();
   document.querySelectorAll('#admin-tbody tr').forEach(tr => {
@@ -2019,5 +2264,40 @@ function togglePw(inputId, btn) {
   }
 })();
 </script>
+
+<!-- ═══════════ EDIT USER MODAL ═══════════ -->
+<div id="modal-edit-user" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:380px;text-align:left;">
+    <div style="font-family:sans-serif;font-size:1rem;font-weight:600;color:var(--gold);margin-bottom:0.35rem;">✏️ Modifica Utente</div>
+    <div class="modal-info" id="edit-user-current" style="margin-bottom:1.1rem;font-family:sans-serif;font-size:0.85rem;color:var(--muted);"></div>
+    <label>Nuovo Username <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;">(lascia vuoto per non cambiare)</span></label>
+    <input id="edit-uname" type="text" placeholder="nuovo username" style="width:100%;margin-bottom:0.75rem;">
+    <label>Nuova Password <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;">(lascia vuoto per non cambiare)</span></label>
+    <div class="pw-wrap" style="margin-bottom:0.75rem;">
+      <input id="edit-pw" type="password" placeholder="nuova password">
+      <button type="button" class="pw-eye" onclick="togglePw('edit-pw',this)" tabindex="-1" aria-label="Mostra/Nascondi password">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
+    </div>
+    <label>Crediti</label>
+    <input id="edit-credits" type="number" min="0" style="width:100%;margin-bottom:0.75rem;">
+    <div id="edit-user-err" class="err hidden" style="margin-bottom:0.75rem;"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" id="btn-edit-cancel">Annulla</button>
+      <button class="btn btn-gold" id="btn-edit-save">Salva modifiche</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ WINNER OVERLAY ═══════════ -->
+<div id="winner-overlay" class="winner-overlay hidden">
+  <div class="winner-big-num" id="wov-num">—</div>
+  <div class="winner-name">🏆 <span id="wov-owner">—</span> 🏆</div>
+  <div class="winner-sub" id="wov-sub">ha vinto l'estrazione!</div>
+  <button class="btn btn-gold" id="btn-wov-close" style="font-size:1rem;padding:0.8rem 2.5rem;">Chiudi celebrazione</button>
+</div>
+
 </body>
 </html>
