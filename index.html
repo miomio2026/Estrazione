@@ -1073,7 +1073,21 @@ function renderWinnerBanner() {
   const banner = document.getElementById('winner-banner');
   if (!banner) return;
   if (!WINNER?.num) { banner.classList.add('hidden'); return; }
+  
+  // ★ NUOVO: Abbrevia il nome a 3 lettere per privacy
+  const rawOwner = WINNER.owner || '—';
+  const displayOwner = (rawOwner === 'Nessun proprietario' || rawOwner === '—')
+    ? rawOwner
+    : rawOwner.substring(0, 3).toUpperCase();
+  
   document.getElementById('wb-num').textContent = WINNER.num;
+  
+  // Aggiorna anche il testo del banner per coerenza
+  const bannerSpan = banner.querySelector('strong');
+  if (bannerSpan) {
+    bannerSpan.innerHTML = `NUMERO VINCENTE: <span style="color:var(--gold);">${WINNER.num}</span>`;
+  }
+  
   banner.classList.remove('hidden');
 }
 
@@ -1081,6 +1095,7 @@ function renderWinnerAdminStatus() {
   const st = document.getElementById('winner-admin-status');
   if (!st) return;
   if (WINNER?.num) {
+    // Admin vede nome COMPLETO per gestione
     st.innerHTML = '🏆 Vincitore annunciato: numero <strong style="color:var(--gold);">' +
       WINNER.num + '</strong> — <strong>' + (WINNER.owner || 'non assegnato') + '</strong>';
     const inp = document.getElementById('winner-input');
@@ -1654,21 +1669,27 @@ async function resetWinner() {
 function showWinnerOverlay(fromListener = false) {
   if (!WINNER?.num) return;
   
-  // ★ NUOVO: Mostra l'overlay SOLO se siamo nella pagina Board
+  // Mostra l'overlay SOLO se siamo nella pagina Board
   const boardPage = document.getElementById('page-board');
   const isBoardVisible = boardPage && !boardPage.classList.contains('hidden');
-  if (!isBoardVisible) return; // Silenzioso — non mostrare se non in tabellone
+  if (!isBoardVisible) return;
 
   // Evita di rimostrarlo ad ogni renderBoard: usa sessionStorage
   const key = 'winner_shown_' + CURRENT_EDITION + '_' + WINNER.num;
   if (fromListener && sessionStorage.getItem(key)) return;
   sessionStorage.setItem(key, '1');
 
+  // ★ NUOVO: Abbrevia il nome a 3 lettere per privacy
+  const rawOwner = WINNER.owner || '—';
+  const displayOwner = (rawOwner === 'Nessun proprietario' || rawOwner === '—') 
+    ? rawOwner 
+    : rawOwner.substring(0, 3).toUpperCase();
+
   const ov = document.getElementById('winner-overlay');
   document.getElementById('wov-num').textContent   = WINNER.num;
-  document.getElementById('wov-owner').textContent = WINNER.owner || '—';
+  document.getElementById('wov-owner').textContent = displayOwner;
   document.getElementById('wov-sub').textContent   =
-    WINNER.owner && WINNER.owner !== 'Nessun proprietario'
+    rawOwner && rawOwner !== 'Nessun proprietario' && rawOwner !== '—'
       ? 'ha vinto l\'estrazione! 🎉'
       : 'Numero estratto — nessun partecipante aveva questo numero.';
   ov.classList.remove('hidden');
