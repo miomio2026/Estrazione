@@ -1656,17 +1656,23 @@ function showWinnerOverlay(fromListener = false) {
   if (fromListener && sessionStorage.getItem(key)) return;
   sessionStorage.setItem(key, '1');
 
-  const ownerDisplay = WINNER.owner
-    ? WINNER.owner.substring(0, 3).toUpperCase()
-    : '—';
+  const isWinner = U && WINNER.owner && U.user === WINNER.owner;
 
   const ov = document.getElementById('winner-overlay');
-  document.getElementById('wov-num').textContent   = WINNER.num;
-  document.getElementById('wov-owner').textContent = ownerDisplay;
-  document.getElementById('wov-sub').textContent   =
-    WINNER.owner && WINNER.owner !== 'Nessun proprietario'
+  document.getElementById('wov-num').textContent = WINNER.num;
+
+  if (isWinner) {
+    document.getElementById('wov-owner').textContent = '🎉 Complimenti!! 🎉';
+    document.getElementById('wov-sub').textContent   = 'Hai vinto la lotteria!';
+  } else {
+    const ownerDisplay = WINNER.owner && WINNER.owner !== 'Nessun proprietario'
+      ? WINNER.owner.substring(0, 3).toUpperCase()
+      : '—';
+    document.getElementById('wov-owner').textContent = ownerDisplay;
+    document.getElementById('wov-sub').textContent   = WINNER.owner && WINNER.owner !== 'Nessun proprietario'
       ? 'ha vinto l\'estrazione! 🎉'
       : 'Numero estratto — nessun partecipante aveva questo numero.';
+  }
   ov.classList.remove('hidden');
 
   // Confetti massicci
